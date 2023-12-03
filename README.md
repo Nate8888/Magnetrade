@@ -1,0 +1,2 @@
+# Magnetrade
+Qunatitative Trading Platform
