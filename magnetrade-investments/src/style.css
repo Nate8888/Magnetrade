@@ -1,0 +1,35 @@
+@keyframes glowingBorder {
+  0% {
+    box-shadow: 0 0 5px #9b59b6, 0 0 15px #9b59b6, 0 0 30px #9b59b6,
+      0 0 60px #e74c3c, 0 0 100px #e74c3c;
+  }
+  50% {
+    box-shadow: 0 0 10px #ffffff, 0 0 30px #9b59b6, 0 0 60px #ffffff,
+      0 0 120px #9b59b6, 0 0 200px #9b59b6;
+  }
+  100% {
+    box-shadow: 0 0 5px #9b59b6, 0 0 15px #9b59b6, 0 0 30px #9b59b6,
+      0 0 60px #e74c3c, 0 0 100px #e74c3c;
+  }
+}
+
+.custom-node {
+  border-radius: 10px;
+  padding: 10px;
+  background: #222; /* Darker background for better contrast */
+  minwidth: 150px;
+  color: white;
+  text-align: center;
+  animation: glowingBorder 2s infinite alternate; /* Apply the animation */
+}
+
+.custom-node-label {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.custom-node-summary {
+  color: #bbb;
+  font-size: 12px;
+  margin-top: 5px;
+}
