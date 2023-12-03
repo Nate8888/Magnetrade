@@ -1,37 +1,58 @@
-import React, { useCallback, useState, useRef } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import ReactFlow, {
   Controls,
   Background,
   useNodesState,
   useEdgesState,
   addEdge,
+  Handle,
+  Position,
 } from "reactflow";
 
 import "reactflow/dist/style.css";
+import './style.css'; // Make sure to import the stylesheet
 
 const initialNodes = [
   {
     id: "1",
-    type: "input",
+    type: "custom",
     position: { x: 250, y: 0 },
     data: { label: "Condition Block" },
-    style: {
-      background: "linear-gradient(45deg, red, #8e44ad)",
-      color: "white",
-    },
   },
   {
     id: "2",
+    type: "custom",
     position: { x: 100, y: 100 },
     data: { label: "Action Block" },
-    style: {
-      background: "linear-gradient(45deg, purple, #8e44ad)",
-      color: "white",
-    },
   },
 ];
 
 const initialEdges = [{ id: "e1-2", source: "1", target: "2" }];
+
+const CustomNodeComponent = ({ id, data }) => (
+  <div className="custom-node">
+    <Handle 
+      type="target"
+      position={Position.Top}
+      id={`${id}_input`}
+      style={{ borderRadius: 0 }}
+    />
+    <div className="custom-node-inner">
+      <div className="custom-node-label">{data.label}</div>
+      <div className="custom-node-summary">{data.summary}</div>
+    </div>
+    <Handle 
+      type="source"
+      position={Position.Bottom}
+      id={`${id}_output`}
+      style={{ borderRadius: 0 }}
+    />
+  </div>
+);
+
+const nodeTypes = {
+  custom: CustomNodeComponent,
+};
 
 export default function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -48,16 +69,6 @@ export default function App() {
 
   const handleAddNode = (type, label) => {
     const newNodeId = (nodeCounter.current += 1).toString();
-    const styleByLabel = {
-      "Condition Block": {
-        background: "linear-gradient(45deg, red, #8e44ad)",
-        color: "white",
-      },
-      "Action Block": {
-        background: "linear-gradient(45deg, purple, #8e44ad)",
-        color: "white",
-      },
-    };
     const newNode = {
       id: newNodeId,
       type: type,
@@ -66,7 +77,6 @@ export default function App() {
         y: Math.random() * window.innerHeight * 0.5,
       },
       data: { label },
-      style: styleByLabel[label],
     };
     setNodes((nds) => nds.concat(newNode));
     setShowDropdown(false);
@@ -75,18 +85,18 @@ export default function App() {
   const onNodeContextMenu = useCallback(
     (event, node) => {
       event.preventDefault();
-  
+
       // Get the clientX and clientY values where the right-click happened
       const clickX = event.clientX;
       const clickY = event.clientY;
-      
+
       // Get viewport dimensions
       const screenW = window.innerWidth;
       const screenH = window.innerHeight;
-  
+
       // Calculate the available space from the click position to the bottom of the screen
       const maxHeight = screenH - clickY;
-  
+
       // Set the position and pass the maxHeight to the contextMenuNode state
       setContextMenuNode({
         nodeId: node.id,
@@ -143,33 +153,48 @@ export default function App() {
   };
 
   const handleNodeInputChange = (nodeId, promptLabel, value, menuKey) => {
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeId
-          ? {
-              ...node,
-              data: {
-                ...node.data,
-                menuSelections: {
-                  ...node.data.menuSelections,
-                  [menuKey]: {
-                    ...node.data.menuSelections[menuKey],
-                    [promptLabel]: value,
-                  },
-                },
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => {
+        if (node.id === nodeId) {
+          // Create a new object with updated menu selections
+          const newData = {
+            ...node.data,
+            menuSelections: {
+              ...node.data.menuSelections,
+              [menuKey]: {
+                ...node.data.menuSelections[menuKey],
+                [promptLabel]: value,
               },
-            }
-          : node
-      )
-    );
-    console.log(nodes);
+            },
+          };
+          // Generate a new summary based on the new data
+          const newSummary = generateNodeSummary({ ...node, data: newData });
+          // Return the node with updated data and summary
+          return {
+            ...node,
+            data: {
+              ...newData,
+              summary: newSummary,
+            },
+          };
+        }
+        return node;
+      });
+    });
   };
+
+  // useEffect everytime that nodes changes
+  useEffect(() => {
+    // Get the selected node
+    console.log("nodes", nodes);
+  }, [nodes]);
+
 
   const operatorOptions = {
     operator: {
       prompts: [
         {
-          label: "Choose Operator",
+          label: "Operator",
           type: "select",
           options: [">", "<", "="],
         },
@@ -209,7 +234,7 @@ export default function App() {
             {
               label: "Look-back Period:",
               type: "input",
-              inputType: "number", 
+              inputType: "number",
             },
             {
               label: "Standard Deviations:",
@@ -261,7 +286,7 @@ export default function App() {
             },
           ],
         },
-        "Volume": {
+        Volume: {
           prompts: [
             {
               label: "Asset:",
@@ -312,7 +337,7 @@ export default function App() {
             {
               label: "Look-back Period:",
               type: "input",
-              inputType: "number", 
+              inputType: "number",
             },
             {
               label: "Standard Deviations:",
@@ -364,7 +389,7 @@ export default function App() {
             },
           ],
         },
-        "Volume": {
+        Volume: {
           prompts: [
             {
               label: "Asset:",
@@ -486,6 +511,7 @@ export default function App() {
               // Use savedValue or the default value depending on whether savedValue exists
               value={savedValue !== undefined ? savedValue : ""}
             >
+              <option value="">Select {prompt.label}</option>
               {prompt.options.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -552,6 +578,40 @@ export default function App() {
   const selectedNode = contextMenuNode
     ? nodes.find((n) => n.id === contextMenuNode.nodeId)
     : null;
+
+  // Place this function inside your App component
+  const generateNodeSummary = (node) => {
+    // Logic to build the execution summary goes here
+    // It can access states, props, and other variables inside the component
+    const operations = [];
+    const { menus, menuSelections } = node.data;
+
+    if (node.data.label === "Condition Block" && menus && menuSelections) {
+      for (const menuKey of Object.keys(menus)) {
+        const subMenuKey = menus[menuKey];
+        const selections = menuSelections[menuKey];
+        if (subMenuKey && selections) {
+          const selectionSummary = Object.values(selections).join(" ");
+          if (selectionSummary && subMenuKey !== "operator")
+            operations.push(`${subMenuKey} ${selectionSummary}`);
+          else if (selectionSummary && subMenuKey === "operator")
+            operations.push(`${selectionSummary}`);
+        }
+      }
+    }
+    if (node.data.label === "Action Block" && menus && menuSelections) {
+      for (const menuKey of Object.keys(menus)) {
+        const subMenuKey = menus[menuKey];
+        const selections = menuSelections[menuKey];
+        if (subMenuKey && selections) {
+          const selectionSummary = Object.values(selections).join(" ");
+          if (selectionSummary) operations.push(`${subMenuKey} ${selectionSummary}`);
+        }
+      }
+    }
+
+    return operations.join(" "); // Format your summary text as needed
+  };
 
   return (
     <div
@@ -628,6 +688,7 @@ export default function App() {
             console.log("Position and zoom updated", transform)
           }
           onNodeContextMenu={onNodeContextMenu}
+          nodeTypes={nodeTypes}
         >
           <Controls />
           <Background variant="dots" gap={12} size={1} />
@@ -669,7 +730,7 @@ export default function App() {
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               <li style={{ padding: "5px" }}>
                 <button
-                  onClick={() => handleAddNode("default", "Condition Block")}
+                  onClick={() => handleAddNode("custom", "Condition Block")}
                   style={{
                     padding: "10px 20px",
                     cursor: "pointer",
@@ -682,7 +743,7 @@ export default function App() {
               </li>
               <li style={{ padding: "5px" }}>
                 <button
-                  onClick={() => handleAddNode("default", "Action Block")}
+                  onClick={() => handleAddNode("custom", "Action Block")}
                   style={{
                     padding: "10px 20px",
                     cursor: "pointer",
@@ -711,7 +772,7 @@ export default function App() {
             borderRadius: 4,
             padding: "5px",
             maxHeight: `${contextMenuNode.maxHeight - 20}px`,
-            overflow: "auto" // Add scroll if content exceeds the container height
+            overflow: "auto", // Add scroll if content exceeds the container height
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
