@@ -8,9 +8,14 @@ import ReactFlow, {
   Handle,
   Position,
 } from "reactflow";
+import { FaSave } from "react-icons/fa";
 
 import "reactflow/dist/style.css";
-import './style.css'; // Make sure to import the stylesheet
+import "./style.css"; // Make sure to import the stylesheet
+
+// Import Firestore
+import { collection, doc, setDoc, addDoc } from "firebase/firestore";
+import { db } from './firebase.js'; // Import the db object from firebase.js
 
 const initialNodes = [
   {
@@ -31,7 +36,7 @@ const initialEdges = [{ id: "e1-2", source: "1", target: "2" }];
 
 const CustomNodeComponent = ({ id, data }) => (
   <div className="custom-node">
-    <Handle 
+    <Handle
       type="target"
       position={Position.Top}
       id={`${id}_input`}
@@ -41,7 +46,7 @@ const CustomNodeComponent = ({ id, data }) => (
       <div className="custom-node-label">{data.label}</div>
       <div className="custom-node-summary">{data.summary}</div>
     </div>
-    <Handle 
+    <Handle
       type="source"
       position={Position.Bottom}
       id={`${id}_output`}
@@ -188,7 +193,6 @@ export default function App() {
     // Get the selected node
     console.log("nodes", nodes);
   }, [nodes]);
-
 
   const operatorOptions = {
     operator: {
@@ -605,12 +609,36 @@ export default function App() {
         const selections = menuSelections[menuKey];
         if (subMenuKey && selections) {
           const selectionSummary = Object.values(selections).join(" ");
-          if (selectionSummary) operations.push(`${subMenuKey} ${selectionSummary}`);
+          if (selectionSummary)
+            operations.push(`${subMenuKey} ${selectionSummary}`);
         }
       }
     }
 
     return operations.join(" "); // Format your summary text as needed
+  };
+
+  const saveStrategyToFirestore = async () => {
+    console.log('Saving strategy to Firestore...')
+    const strategyData = {
+      // If using authenticated userId, replace 'nate' with the userId variable
+      uid: 'nate', 
+      strategy: {
+        nodes: nodes,
+        edges: edges
+      }
+    };
+  
+    try {
+      // This assumes you want to create a new document each time you save.
+      // If updating an existing strategy, use the existing strategy ID.
+      const strategyRef = doc(collection(db, "strategies"));
+      await setDoc(strategyRef, strategyData);
+  
+      console.log('Strategy saved successfully with ID: ', strategyRef.id);
+    } catch (error) {
+      console.error('Error saving strategy: ', error);
+    }
   };
 
   return (
@@ -700,7 +728,7 @@ export default function App() {
           onClick={() => setShowDropdown(!showDropdown)}
           style={{
             position: "absolute",
-            right: 20,
+            right: 80,
             top: 20,
             zIndex: 100,
             background: "linear-gradient(45deg, purple, red)",
@@ -713,6 +741,25 @@ export default function App() {
           }}
         >
           +
+        </button>
+        <button
+          onClick={saveStrategyToFirestore}
+          style={{
+            position: "absolute",
+            right: 20,
+            top: 20,
+            zIndex: 100,
+            background: "linear-gradient(45deg, green, lightgreen)",
+            color: "white",
+            border: "none",
+            borderRadius: "50%",
+            width: 50,
+            height: 50,
+            cursor: "pointer",
+          }}
+        >
+          {/* save icon */}
+          <FaSave />
         </button>
         {showDropdown && (
           <div
