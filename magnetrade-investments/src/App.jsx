@@ -75,10 +75,24 @@ export default function App() {
   const onNodeContextMenu = useCallback(
     (event, node) => {
       event.preventDefault();
+  
+      // Get the clientX and clientY values where the right-click happened
+      const clickX = event.clientX;
+      const clickY = event.clientY;
+      
+      // Get viewport dimensions
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+  
+      // Calculate the available space from the click position to the bottom of the screen
+      const maxHeight = screenH - clickY;
+  
+      // Set the position and pass the maxHeight to the contextMenuNode state
       setContextMenuNode({
         nodeId: node.id,
-        posX: event.clientX,
-        posY: event.clientY,
+        posX: clickX,
+        posY: clickY,
+        maxHeight: maxHeight, // This will be used to set the maxHeight style of the context menu
       });
     },
     [setContextMenuNode]
@@ -195,7 +209,7 @@ export default function App() {
           ],
         },
       },
-      "condition": operatorOptions,
+      condition: operatorOptions,
       "Function 2": {
         "Moving Average": {
           prompts: [
@@ -228,7 +242,7 @@ export default function App() {
       },
     },
     "Action Block": {
-      "Actions":{
+      Actions: {
         Buy: {
           prompts: [
             {
@@ -257,7 +271,7 @@ export default function App() {
             },
           ],
         },
-      }
+      },
     },
   };
 
@@ -308,8 +322,9 @@ export default function App() {
   // Renders an individual prompt based on its type
   const renderPrompt = (prompt, index, nodeId, menuKey) => {
     // Retrieve the savedValue using the menuKey and prompt.label
-    const savedValue = selectedNode?.data.menuSelections[menuKey]?.[prompt.label];
-  
+    const savedValue =
+      selectedNode?.data.menuSelections[menuKey]?.[prompt.label];
+
     switch (prompt.type) {
       case "select":
         return (
@@ -368,7 +383,10 @@ export default function App() {
                 handleNodeInputChange(
                   nodeId,
                   prompt.label,
-                  Array.from(e.target.selectedOptions, (option) => option.value),
+                  Array.from(
+                    e.target.selectedOptions,
+                    (option) => option.value
+                  ),
                   menuKey
                 )
               }
@@ -386,7 +404,7 @@ export default function App() {
         return null;
     }
   };
-  
+
   const selectedNode = contextMenuNode
     ? nodes.find((n) => n.id === contextMenuNode.nodeId)
     : null;
@@ -548,6 +566,8 @@ export default function App() {
             boxShadow: "0 2px 10px rgba(0,0,0,.2)",
             borderRadius: 4,
             padding: "5px",
+            maxHeight: `${contextMenuNode.maxHeight - 20}px`,
+            overflow: "auto" // Add scroll if content exceeds the container height
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
