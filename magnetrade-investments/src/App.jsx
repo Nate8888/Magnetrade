@@ -14,8 +14,8 @@ import "reactflow/dist/style.css";
 import "./style.css"; // Make sure to import the stylesheet
 
 // Import Firestore
-import { collection, doc, setDoc, addDoc } from "firebase/firestore";
-import { db } from './firebase.js'; // Import the db object from firebase.js
+import { collection, doc, setDoc, addDoc, getDoc } from "firebase/firestore";
+import { db } from "./firebase.js"; // Import the db object from firebase.js
 
 const initialNodes = [
   {
@@ -64,8 +64,16 @@ export default function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [showDropdown, setShowDropdown] = useState(false);
   const [contextMenuNode, setContextMenuNode] = useState(null);
-
+  const [strategyId, setStrategyId] = useState(null);
   const nodeCounter = useRef(2);
+
+  // Call the load strategy function with specific strategyId when the component mounts
+  useEffect(() => {
+    // Example: Assume you're loading a strategy with ID 'strategy_1' for user 'nate'
+    const strategyId = "Ncj4Tv4ljzB83hYuWHOh";
+    const userId = "nate"; // Should be retrieved from the authenticated user's info
+    loadStrategyFromFirestore(userId, strategyId);
+  }, []); // Empty dependency array ensures this is run once on component mount
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
@@ -241,14 +249,14 @@ export default function App() {
               inputType: "number",
             },
             {
-              label: "Standard Deviations:",
-              type: "input",
-              inputType: "number",
-            },
-            {
               label: "Aggregation:",
               type: "select",
               options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
+            },
+            {
+              label: "Standard Deviations:",
+              type: "input",
+              inputType: "number",
             },
           ],
         },
@@ -287,6 +295,15 @@ export default function App() {
               label: "Asset:",
               type: "select",
               options: ["AAPL", "MSFT", "GOOGL"],
+            },
+          ],
+        },
+        Number: {
+          prompts: [
+            {
+              label: "Number:",
+              type: "input",
+              inputType: "number",
             },
           ],
         },
@@ -344,14 +361,14 @@ export default function App() {
               inputType: "number",
             },
             {
-              label: "Standard Deviations:",
-              type: "input",
-              inputType: "number",
-            },
-            {
               label: "Aggregation:",
               type: "select",
               options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
+            },
+            {
+              label: "Standard Deviations:",
+              type: "input",
+              inputType: "number",
             },
           ],
         },
@@ -390,6 +407,15 @@ export default function App() {
               label: "Asset:",
               type: "select",
               options: ["AAPL", "MSFT", "GOOGL"],
+            },
+          ],
+        },
+        Number: {
+          prompts: [
+            {
+              label: "Number:",
+              type: "input",
+              inputType: "number",
             },
           ],
         },
@@ -585,59 +611,141 @@ export default function App() {
 
   // Place this function inside your App component
   const generateNodeSummary = (node) => {
-    // Logic to build the execution summary goes here
-    // It can access states, props, and other variables inside the component
-    const operations = [];
-    const { menus, menuSelections } = node.data;
+    let summaryParts = [];
 
-    if (node.data.label === "Condition Block" && menus && menuSelections) {
-      for (const menuKey of Object.keys(menus)) {
-        const subMenuKey = menus[menuKey];
-        const selections = menuSelections[menuKey];
-        if (subMenuKey && selections) {
-          const selectionSummary = Object.values(selections).join(" ");
-          if (selectionSummary && subMenuKey !== "operator")
-            operations.push(`${subMenuKey} ${selectionSummary}`);
-          else if (selectionSummary && subMenuKey === "operator")
-            operations.push(`${selectionSummary}`);
+    if (node.data.label === "Condition Block") {
+      const orderedMenuKeys = Object.keys(menuConfiguration["Condition Block"]);
+
+      for (const menuKey of orderedMenuKeys) {
+        const selectedOperation = node.data.menus?.[menuKey];
+        if (selectedOperation) {
+          const operation = menuConfiguration["Condition Block"][menuKey];
+          const selectedSubMenu = operation[selectedOperation];
+
+          if (selectedSubMenu && selectedSubMenu.prompts) {
+            if (selectedOperation != "operator")
+              summaryParts.push(selectedOperation);
+            const promptValues = selectedSubMenu.prompts
+              .map((prompt) => {
+                // Use the menuSelections to retrieve the saved value for each prompt
+                const savedValue =
+                  node.data.menuSelections?.[menuKey]?.[prompt.label];
+                return savedValue ? `${savedValue}` : "";
+              })
+              .filter(Boolean)
+              .join(" "); // Remove empty strings and join with space
+
+            // Add the operation name followed by the collected prompt values
+            summaryParts.push(`${promptValues}`);
+          }
         }
       }
     }
-    if (node.data.label === "Action Block" && menus && menuSelections) {
-      for (const menuKey of Object.keys(menus)) {
-        const subMenuKey = menus[menuKey];
-        const selections = menuSelections[menuKey];
-        if (subMenuKey && selections) {
-          const selectionSummary = Object.values(selections).join(" ");
-          if (selectionSummary)
-            operations.push(`${subMenuKey} ${selectionSummary}`);
+    // Action Block logic
+    // This helper function retrieves prompt values and formats them
+    const getPromptValues = (operation, menuKey, node) => {
+      return operation.prompts
+        .map((prompt) => {
+          const savedValue =
+            node.data.menuSelections?.[menuKey]?.[prompt.label];
+          // Assume the prompt label should not be included in the summary, just the value
+          return savedValue || ""; // Default to an empty string if no value saved
+        })
+        .filter(Boolean) // Remove empty strings
+        .join(" "); // Join with spaces
+    };
+
+    // Action Block logic
+    if (node.data.label === "Action Block") {
+      const orderedMenuKeys = Object.keys(menuConfiguration["Action Block"]);
+
+      for (const menuKey of orderedMenuKeys) {
+        const selectedActionKey = node.data.menus?.[menuKey];
+
+        if (selectedActionKey) {
+          const actionConfig =
+            menuConfiguration["Action Block"][menuKey][selectedActionKey];
+
+          if (actionConfig && actionConfig.prompts) {
+            const promptValues = getPromptValues(actionConfig, menuKey, node);
+            // Adding the action name and the prompt values to the summary
+            summaryParts.push(`${selectedActionKey} ${promptValues}`);
+          }
         }
       }
     }
 
-    return operations.join(" "); // Format your summary text as needed
+    // Join the summary parts with spaces
+    return summaryParts.length > 0
+      ? summaryParts.join(" ")
+      : "No operations defined";
   };
+  // };
+  //   if (node.data.label === "Action Block" && menus && menuSelections) {
+  //     for (const menuKey of Object.keys(menus)) {
+  //       const subMenuKey = menus[menuKey];
+  //       const selections = menuSelections[menuKey];
+  //       if (subMenuKey && selections) {
+  //         const selectionSummary = Object.values(selections).join(" ");
+  //         if (selectionSummary)
+  //           operations.push(`${subMenuKey} ${selectionSummary}`);
+  //       }
+  //     }
+  //   }
+
+  //   return operations.join(" "); // Format your summary text as needed
+  // };
 
   const saveStrategyToFirestore = async () => {
-    console.log('Saving strategy to Firestore...')
+    console.log("Saving strategy to Firestore...");
+    // get the state strategyId, if it's null, create a new strategy
+    // if it's not null, update the existing strategy
     const strategyData = {
       // If using authenticated userId, replace 'nate' with the userId variable
-      uid: 'nate', 
+      uid: "nate",
       strategy: {
         nodes: nodes,
-        edges: edges
-      }
+        edges: edges,
+      },
     };
-  
+
     try {
       // This assumes you want to create a new document each time you save.
       // If updating an existing strategy, use the existing strategy ID.
-      const strategyRef = doc(collection(db, "strategies"));
-      await setDoc(strategyRef, strategyData);
-  
-      console.log('Strategy saved successfully with ID: ', strategyRef.id);
+      if (strategyId) {
+        const strategyRef = doc(collection(db, "strategies"), strategyId);
+        await setDoc(strategyRef, strategyData);
+        console.log("Strategy updated successfully with ID: ", strategyRef.id);
+      } else {
+        const strategyRef = doc(collection(db, "strategies"));
+        await setDoc(strategyRef, strategyData);
+        console.log("Strategy saved successfully with ID: ", strategyRef.id);
+      }
     } catch (error) {
-      console.error('Error saving strategy: ', error);
+      console.error("Error saving strategy: ", error);
+    }
+  };
+
+  // strategyId state
+  const loadStrategyFromFirestore = async (uid, strategyId) => {
+    const strategyRef = doc(db, "strategies", strategyId);
+
+    try {
+      const strategySnap = await getDoc(strategyRef);
+      if (strategySnap.exists()) {
+        const strategyData = strategySnap.data();
+        // Assuming here retrieved data has `nodes` and `edges` format suitable for ReactFlow
+        setNodes(strategyData.strategy.nodes);
+        setEdges(strategyData.strategy.edges);
+        // set strategyId to the strategyId state
+        setStrategyId(strategySnap.id);
+        console.log("Strategy loaded successfully!");
+      } else {
+        // Handle the case where there is no such strategy with given ID
+        console.log("No such strategy!");
+      }
+    } catch (error) {
+      console.error("Error loading strategy: ", error);
     }
   };
 
