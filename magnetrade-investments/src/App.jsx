@@ -179,63 +179,207 @@ export default function App() {
 
   const menuConfiguration = {
     "Condition Block": {
-      "Function 1": {
-        "Moving Average": {
+      "Operation 1": {
+        "RSI (Relative Strength Index)": {
           prompts: [
             {
               label: "Asset:",
               type: "select",
-              options: ["AAPL", "MSFT", "GOOGL"], // Add more symbols as needed
+              options: ["AAPL", "MSFT", "GOOGL"],
             },
             {
-              label: "Select Timespan:",
+              label: "Look-back Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
               type: "select",
-              options: [5, 10, 20], // timespans
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
             },
           ],
         },
-        "Modern Portfolio Theory": {
+        "Bollinger Bands Middle": {
           prompts: [
             {
-              label: "Number of Assets:",
-              type: "input",
-              inputType: "number", // Number of assets for the portfolio
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
             },
             {
-              label: "Select Assets:",
-              type: "selectMultiple",
-              options: ["AAPL", "MSFT", "GOOGL"], // Multiple assets selection
+              label: "Look-back Period:",
+              type: "input",
+              inputType: "number", 
+            },
+            {
+              label: "Standard Deviations:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
+              type: "select",
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
+            },
+          ],
+        },
+        "MACD Line": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+            {
+              label: "Fast Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Slow Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Signal Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
+              type: "select",
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
+            },
+          ],
+        },
+        "Current Stock Price": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+          ],
+        },
+        "Volume": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+            {
+              label: "Look-back Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
+              type: "select",
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
             },
           ],
         },
       },
       condition: operatorOptions,
-      "Function 2": {
-        "Moving Average": {
+      "Operation 2": {
+        "RSI (Relative Strength Index)": {
           prompts: [
             {
               label: "Asset:",
               type: "select",
-              options: ["AAPL", "MSFT", "GOOGL"], // Add more symbols as needed
+              options: ["AAPL", "MSFT", "GOOGL"],
             },
             {
-              label: "Select Timespan:",
+              label: "Look-back Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
               type: "select",
-              options: [5, 10, 20], // timespans
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
             },
           ],
         },
-        "Modern Portfolio Theory": {
+        "Bollinger Bands Middle": {
           prompts: [
             {
-              label: "Number of Assets:",
-              type: "input",
-              inputType: "number", // Number of assets for the portfolio
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
             },
             {
-              label: "Select Assets:",
-              type: "selectMultiple",
-              options: ["AAPL", "MSFT", "GOOGL"], // Multiple assets selection
+              label: "Look-back Period:",
+              type: "input",
+              inputType: "number", 
+            },
+            {
+              label: "Standard Deviations:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
+              type: "select",
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
+            },
+          ],
+        },
+        "MACD Line": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+            {
+              label: "Fast Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Slow Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Signal Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
+              type: "select",
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
+            },
+          ],
+        },
+        "Current Stock Price": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+          ],
+        },
+        "Volume": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+            {
+              label: "Look-back Period:",
+              type: "input",
+              inputType: "number",
+            },
+            {
+              label: "Aggregation:",
+              type: "select",
+              options: ["Minutes", "Hours", "Days", "Weeks", "Months"],
             },
           ],
         },
@@ -533,7 +677,7 @@ export default function App() {
                     width: "100%",
                   }}
                 >
-                  Conditional Block
+                  Condition Block
                 </button>
               </li>
               <li style={{ padding: "5px" }}>
