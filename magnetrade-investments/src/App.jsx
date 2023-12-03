@@ -105,7 +105,7 @@ export default function App() {
   const [selectedMenu, setSelectedMenu] = useState(null);
   const [selections, setSelections] = useState({});
 
-  const handleSubMenuChange = (nodeId, subMenuKey) => {
+  const handleSubMenuChange = (nodeId, menuKey, subMenuKey) => {
     setNodes((nds) =>
       nds.map((node) =>
         node.id === nodeId
@@ -113,8 +113,14 @@ export default function App() {
               ...node,
               data: {
                 ...node.data,
-                selectedSubMenu: subMenuKey,
-                menuSelections: {}, // Reset selections when a new sub menu is selected
+                menus: {
+                  ...node.data.menus,
+                  [menuKey]: subMenuKey,
+                },
+                menuSelections: {
+                  ...node.data.menuSelections,
+                  [menuKey]: {}, // Reset selections for the menu when a new sub menu is selected
+                },
               },
             }
           : node
@@ -122,7 +128,7 @@ export default function App() {
     );
   };
 
-  const handleNodeInputChange = (nodeId, promptLabel, value) => {
+  const handleNodeInputChange = (nodeId, promptLabel, value, menuKey) => {
     setNodes((nds) =>
       nds.map((node) =>
         node.id === nodeId
@@ -132,7 +138,10 @@ export default function App() {
                 ...node.data,
                 menuSelections: {
                   ...node.data.menuSelections,
-                  [promptLabel]: value,
+                  [menuKey]: {
+                    ...node.data.menuSelections[menuKey],
+                    [promptLabel]: value,
+                  },
                 },
               },
             }
@@ -142,73 +151,165 @@ export default function App() {
     console.log(nodes);
   };
 
-  const menuConfiguration = {
-    "Condition Block": {
-      "Moving Average": {
-        prompts: [
-          {
-            label: "Asset:",
-            type: "select",
-            options: ["AAPL", "MSFT", "GOOGL"], // Add more symbols as needed
-          },
-          {
-            label: "Select Timespan:",
-            type: "select",
-            options: [5, 10, 20], // timespans
-          },
-        ],
-      },
-      "Modern Portfolio Theory": {
-        prompts: [
-          {
-            label: "Number of Assets:",
-            type: "input",
-            inputType: "number", // Number of assets for the portfolio
-          },
-          {
-            label: "Select Assets:",
-            type: "selectMultiple",
-            options: ["AAPL", "MSFT", "GOOGL"], // Multiple assets selection
-          },
-        ],
-      },
-    },
-    "Action Block": {
-      Buy: {
-        prompts: [
-          {
-            label: "Asset:",
-            type: "select",
-            options: ["AAPL", "MSFT", "GOOGL"],
-          },
-          {
-            label: "Quantity:",
-            type: "input",
-            inputType: "number",
-          },
-        ],
-      },
-      Sell: {
-        prompts: [
-          {
-            label: "Asset:",
-            type: "select",
-            options: ["AAPL", "MSFT", "GOOGL"],
-          },
-          {
-            label: "Quantity:",
-            type: "input",
-            inputType: "number",
-          },
-        ],
-      },
+  const operatorOptions = {
+    operator: {
+      prompts: [
+        {
+          label: "Choose Operator",
+          type: "select",
+          options: [">", "<", "="],
+        },
+      ],
     },
   };
 
-  // Renders an individual prompt based on its type
-  const renderPrompt = (prompt, index, nodeId) => {
-    const savedValue = selectedNode?.data.menuSelections[prompt.label];
+  const menuConfiguration = {
+    "Condition Block": {
+      "Function 1": {
+        "Moving Average": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"], // Add more symbols as needed
+            },
+            {
+              label: "Select Timespan:",
+              type: "select",
+              options: [5, 10, 20], // timespans
+            },
+          ],
+        },
+        "Modern Portfolio Theory": {
+          prompts: [
+            {
+              label: "Number of Assets:",
+              type: "input",
+              inputType: "number", // Number of assets for the portfolio
+            },
+            {
+              label: "Select Assets:",
+              type: "selectMultiple",
+              options: ["AAPL", "MSFT", "GOOGL"], // Multiple assets selection
+            },
+          ],
+        },
+      },
+      "condition": operatorOptions,
+      "Function 2": {
+        "Moving Average": {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"], // Add more symbols as needed
+            },
+            {
+              label: "Select Timespan:",
+              type: "select",
+              options: [5, 10, 20], // timespans
+            },
+          ],
+        },
+        "Modern Portfolio Theory": {
+          prompts: [
+            {
+              label: "Number of Assets:",
+              type: "input",
+              inputType: "number", // Number of assets for the portfolio
+            },
+            {
+              label: "Select Assets:",
+              type: "selectMultiple",
+              options: ["AAPL", "MSFT", "GOOGL"], // Multiple assets selection
+            },
+          ],
+        },
+      },
+    },
+    "Action Block": {
+      "Actions":{
+        Buy: {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+            {
+              label: "Quantity:",
+              type: "input",
+              inputType: "number",
+            },
+          ],
+        },
+        Sell: {
+          prompts: [
+            {
+              label: "Asset:",
+              type: "select",
+              options: ["AAPL", "MSFT", "GOOGL"],
+            },
+            {
+              label: "Quantity:",
+              type: "input",
+              inputType: "number",
+            },
+          ],
+        },
+      }
+    },
+  };
 
+  const renderNodeMenu = (selectedNode) => {
+    return (
+      <>
+        {Object.keys(menuConfiguration[selectedNode.data.label]).map(
+          (menuKey) => {
+            const menu = menuConfiguration[selectedNode.data.label][menuKey];
+            const selectedSubMenuKey =
+              selectedNode.data.menus && selectedNode.data.menus[menuKey];
+
+            return (
+              <div key={menuKey} style={{ padding: "5px" }}>
+                <select
+                  value={selectedSubMenuKey || ""}
+                  onChange={(e) =>
+                    handleSubMenuChange(
+                      selectedNode.id,
+                      menuKey,
+                      e.target.value
+                    )
+                  }
+                >
+                  <option value="">Select {menuKey}</option>
+                  {Object.keys(menu).map((subMenuKey) => (
+                    <option key={subMenuKey} value={subMenuKey}>
+                      {subMenuKey}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Render the prompts if a sub menu is selected */}
+                {selectedSubMenuKey &&
+                  menu[selectedSubMenuKey].prompts.map((prompt, index) => (
+                    <div key={index} style={{ padding: "5px", color: "black" }}>
+                      {renderPrompt(prompt, index, selectedNode.id, menuKey)}
+                    </div>
+                  ))}
+              </div>
+            );
+          }
+        )}
+      </>
+    );
+  };
+
+  // Renders an individual prompt based on its type
+  const renderPrompt = (prompt, index, nodeId, menuKey) => {
+    // Retrieve the savedValue using the menuKey and prompt.label
+    const savedValue = selectedNode?.data.menuSelections[menuKey]?.[prompt.label];
+  
     switch (prompt.type) {
       case "select":
         return (
@@ -216,9 +317,15 @@ export default function App() {
             <label>{prompt.label}: </label>
             <select
               onChange={(e) =>
-                handleNodeInputChange(nodeId, prompt.label, e.target.value)
+                handleNodeInputChange(
+                  nodeId,
+                  prompt.label,
+                  e.target.value,
+                  menuKey
+                )
               }
-              value={savedValue || ""}
+              // Use savedValue or the default value depending on whether savedValue exists
+              value={savedValue !== undefined ? savedValue : ""}
             >
               {prompt.options.map((option) => (
                 <option key={option} value={option}>
@@ -233,26 +340,36 @@ export default function App() {
           <div key={index} style={{ padding: "5px", color: "black" }}>
             <label>{prompt.label}: </label>
             <input
-              value={savedValue || ""}
+              // Use value or empty string if value is undefined
+              value={savedValue !== undefined ? savedValue : ""}
               type={prompt.inputType || "text"}
               onChange={(e) =>
-                handleNodeInputChange(nodeId, prompt.label, e.target.value)
+                handleNodeInputChange(
+                  nodeId,
+                  prompt.label,
+                  e.target.value,
+                  menuKey
+                )
               }
             />
           </div>
         );
       case "selectMultiple":
+        // Ensure savedValue is an array for 'selectMultiple'
+        const savedArrayValue = Array.isArray(savedValue) ? savedValue : [];
         return (
           <div key={index} style={{ padding: "5px", color: "black" }}>
             <label>{prompt.label}: </label>
             <select
               multiple
-              value={savedValue || []}
+              // Use savedValue as array or empty array if undefined
+              value={savedArrayValue}
               onChange={(e) =>
                 handleNodeInputChange(
                   nodeId,
                   prompt.label,
-                  Array.from(e.target.selectedOptions, (option) => option.value)
+                  Array.from(e.target.selectedOptions, (option) => option.value),
+                  menuKey
                 )
               }
             >
@@ -269,6 +386,7 @@ export default function App() {
         return null;
     }
   };
+  
   const selectedNode = contextMenuNode
     ? nodes.find((n) => n.id === contextMenuNode.nodeId)
     : null;
@@ -433,42 +551,12 @@ export default function App() {
           }}
           onContextMenu={(e) => e.preventDefault()}
         >
-          <div style={{ marginBottom: "5px" }}>
+          <div style={{ marginBottom: "5px", color: "black" }}>
             <strong>{selectedNode.data.label}</strong>
           </div>
 
-          {menuConfiguration[selectedNode.data.label] && (
-            <div style={{ padding: "5px" }}>
-              <select
-                value={selectedNode.data.selectedSubMenu || ""}
-                onChange={(e) =>
-                  handleSubMenuChange(selectedNode.id, e.target.value)
-                }
-              >
-                <option value="">Select an Option...</option>
-                {Object.keys(menuConfiguration[selectedNode.data.label]).map(
-                  (menuKey) => (
-                    <option key={menuKey} value={menuKey}>
-                      {menuKey}
-                    </option>
-                  )
-                )}
-              </select>
-            </div>
-          )}
-
-          {/* Map through prompts and render form elements */}
-          {selectedNode.data.selectedSubMenu &&
-            menuConfiguration[selectedNode.data.label][
-              selectedNode.data.selectedSubMenu
-            ].prompts.map((prompt, index) => (
-              <div key={index} style={{ padding: "5px", color: "black" }}>
-                <label htmlFor={`node-${selectedNode.id}-${prompt.label}`}>
-                  {prompt.label}
-                </label>
-                {renderPrompt(prompt, index, selectedNode.id)}
-              </div>
-            ))}
+          {/* Render the different menus */}
+          {renderNodeMenu(selectedNode)}
 
           <div style={{ padding: "5px", marginTop: "10px" }}>
             <button
