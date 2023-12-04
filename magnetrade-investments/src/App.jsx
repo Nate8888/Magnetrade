@@ -20,13 +20,13 @@ import { db } from "./firebase.js"; // Import the db object from firebase.js
 const initialNodes = [
   {
     id: "1",
-    type: "custom",
+    type: "condition",
     position: { x: 250, y: 0 },
     data: { label: "Condition Block" },
   },
   {
     id: "2",
-    type: "custom",
+    type: "action",
     position: { x: 100, y: 100 },
     data: { label: "Action Block" },
   },
@@ -34,17 +34,17 @@ const initialNodes = [
 
 const initialEdges = [{ id: "e1-2", source: "1", target: "2" }];
 
-const CustomNodeComponent = ({ id, data }) => (
-  <div className="custom-node">
+const ConditionNodeComponent = ({ id, data }) => (
+  <div className="condition-node">
     <Handle
       type="target"
       position={Position.Top}
       id={`${id}_input`}
       style={{ borderRadius: 0 }}
     />
-    <div className="custom-node-inner">
-      <div className="custom-node-label">{data.label}</div>
-      <div className="custom-node-summary">{data.summary}</div>
+    <div className="condition-node-inner">
+      <div className="condition-node-label">{data.label}</div>
+      <div className="condition-node-summary">{data.summary}</div>
     </div>
     <Handle
       type="source"
@@ -55,8 +55,24 @@ const CustomNodeComponent = ({ id, data }) => (
   </div>
 );
 
+const ActionNodeComponent = ({ id, data }) => (
+  <div className="action-node">
+    <Handle
+      type="target"
+      position={Position.Top}
+      id={`${id}_input`}
+      style={{ borderRadius: 0 }}
+    />
+    <div className="action-node-inner">
+      <div className="action-node-label">{data.label}</div>
+      <div className="action-node-summary">{data.summary}</div>
+    </div>
+  </div>
+);
+
 const nodeTypes = {
-  custom: CustomNodeComponent,
+  condition: ConditionNodeComponent,
+  action: ActionNodeComponent,
 };
 
 export default function App() {
@@ -65,12 +81,12 @@ export default function App() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [contextMenuNode, setContextMenuNode] = useState(null);
   const [strategyId, setStrategyId] = useState(null);
-  const nodeCounter = useRef(2);
+  const nodeCounter = useRef(nodes.length);
 
   // Call the load strategy function with specific strategyId when the component mounts
   useEffect(() => {
     // Example: Assume you're loading a strategy with ID 'strategy_1' for user 'nate'
-    const strategyId = "Ncj4Tv4ljzB83hYuWHOh";
+    const strategyId = "ZxxfBz0W2wOfH2qoOB1B";
     const userId = "nate"; // Should be retrieved from the authenticated user's info
     loadStrategyFromFirestore(userId, strategyId);
   }, []); // Empty dependency array ensures this is run once on component mount
@@ -81,7 +97,10 @@ export default function App() {
   );
 
   const handleAddNode = (type, label) => {
-    const newNodeId = (nodeCounter.current += 1).toString();
+    let newNodeId = (nodeCounter.current += 1).toString();
+    while (nodes.find((node) => node.id === newNodeId)) {
+      newNodeId = (nodeCounter.current += 1).toString();
+    }
     const newNode = {
       id: newNodeId,
       type: type,
@@ -121,18 +140,80 @@ export default function App() {
     [setContextMenuNode]
   );
 
-  const handleChangeNodeLabel = (newLabel) => {
-    if (contextMenuNode && newLabel.trim()) {
-      setNodes((nds) =>
-        nds.map((node) =>
-          node.id === contextMenuNode.nodeId
-            ? { ...node, data: { ...node.data, label: newLabel.trim() } }
-            : node
-        )
-      );
-      setContextMenuNode(null);
+  // Helper function to create a map of the adjacency list from edges
+  function createAdjacencyList(nodes, edges) {
+    const adjacencyList = new Map(nodes.map((node) => [node.id, []]));
+    edges.forEach((edge) => {
+      adjacencyList.get(edge.source).push(edge.target);
+    });
+    return adjacencyList;
+  }
+
+  // Function to identify components and perform topological sort for each component
+  // Function to identify components and perform topological sort starting with condition nodes
+  function extractWorkflow(nodes, edges) {
+    const adjacencyList = createAdjacencyList(nodes, edges);
+    const visited = new Set();
+    const components = [];
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+  
+    const isConditionNode = (node) => {
+      return node && node.data.label.startsWith('Condition');
+    };
+  
+    // Helper function for DFS and topological sort
+    function DFS(nodeId, orderedComponent) {
+      if (visited.has(nodeId)) return;
+      visited.add(nodeId);
+      const node = nodeMap.get(nodeId);
+      const neighbors = adjacencyList.get(nodeId) || [];
+  
+      // If it's a condition node or a standalone action node, add it to the ordered component
+      if (isConditionNode(node) || !neighbors.length) {
+        orderedComponent.push(nodeId); 
+      }
+  
+      // Continue the traversal for any neighbors
+      neighbors.forEach(neighbor => {
+        if (!visited.has(neighbor)) {
+          DFS(neighbor, orderedComponent);
+        }
+      });
+  
+      // After processing all neighbors, if it's an action node connected to a condition node, add it
+      if (!isConditionNode(node) && neighbors.length) {
+        orderedComponent.push(nodeId);
+      }
     }
-  };
+  
+    // Main loop through nodes to identify connected components
+    nodes.forEach(node => {
+      if (!visited.has(node.id)) {
+        const orderedComponent = [];
+        DFS(node.id, orderedComponent);
+        if (orderedComponent.length > 0) {
+          components.push(orderedComponent);
+        }
+      }
+    });
+  
+    return components;
+  }
+
+  // Function to construct the workflow object based on the topological sort
+  // Function to transform ordered components into an object with summaries
+  // Function to construct the workflow object based on the topological sort
+  function constructOrderedWorkflow(sortedComponents, nodes) {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const workflowSummary = sortedComponents.map((component) => {
+      return component.map((nodeId) => nodeMap.get(nodeId).data.summary);
+    });
+
+    // Filter out any undefined or empty summaries
+    return workflowSummary.map((component) =>
+      component.filter((summary) => summary && summary.trim() !== "")
+    );
+  }
 
   const [valueSelect, setValueSelect] = useState("MovingAverage");
   const handleValueSelectChange = (event) => {
@@ -700,6 +781,11 @@ export default function App() {
     console.log("Saving strategy to Firestore...");
     // get the state strategyId, if it's null, create a new strategy
     // if it's not null, update the existing strategy
+    // Call extractWorkflow and constructOrderedWorkflow to get the ordered actions
+    const sortedComponents = extractWorkflow(nodes, edges);
+    const orderedWorkflow = constructOrderedWorkflow(sortedComponents, nodes);
+    // transform orderedWorkflow into a json string
+    const orderedWorkflowString = JSON.stringify(orderedWorkflow);
     const strategyData = {
       // If using authenticated userId, replace 'nate' with the userId variable
       uid: "nate",
@@ -707,6 +793,7 @@ export default function App() {
         nodes: nodes,
         edges: edges,
       },
+      orderedWorkflow: orderedWorkflowString,
     };
 
     try {
@@ -885,7 +972,7 @@ export default function App() {
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               <li style={{ padding: "5px" }}>
                 <button
-                  onClick={() => handleAddNode("custom", "Condition Block")}
+                  onClick={() => handleAddNode("condition", "Condition Block")}
                   style={{
                     padding: "10px 20px",
                     cursor: "pointer",
@@ -898,7 +985,7 @@ export default function App() {
               </li>
               <li style={{ padding: "5px" }}>
                 <button
-                  onClick={() => handleAddNode("custom", "Action Block")}
+                  onClick={() => handleAddNode("action", "Action Block")}
                   style={{
                     padding: "10px 20px",
                     cursor: "pointer",

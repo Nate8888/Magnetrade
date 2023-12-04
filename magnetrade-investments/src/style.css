@@ -13,7 +13,7 @@
   }
 }
 
-.custom-node {
+.condition-node {
   border-radius: 10px;
   padding: 10px;
   background: #222; /* Darker background for better contrast */
@@ -23,13 +23,34 @@
   animation: glowingBorder 2s infinite alternate; /* Apply the animation */
 }
 
-.custom-node-label {
+.condition-node-label {
   font-weight: bold;
   font-size: 16px;
 }
 
-.custom-node-summary {
+.condition-node-summary {
   color: #bbb;
   font-size: 12px;
   margin-top: 5px;
 }
+
+.action-node {
+    border-radius: 10px;
+    padding: 10px;
+    background: #222; /* Darker background for better contrast */
+    minwidth: 150px;
+    color: white;
+    text-align: center;
+    animation: glowingBorder 2s infinite alternate; /* Apply the animation */
+  }
+  
+  .action-node-label {
+    font-weight: bold;
+    font-size: 16px;
+  }
+  
+  .action-node-summary {
+    color: #bbb;
+    font-size: 12px;
+    margin-top: 5px;
+  }
