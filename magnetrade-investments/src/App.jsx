@@ -17,22 +17,9 @@ import "./style.css"; // Make sure to import the stylesheet
 import { collection, doc, setDoc, addDoc, getDoc } from "firebase/firestore";
 import { db } from "./firebase.js"; // Import the db object from firebase.js
 
-const initialNodes = [
-  {
-    id: "1",
-    type: "condition",
-    position: { x: 250, y: 0 },
-    data: { label: "Condition Block" },
-  },
-  {
-    id: "2",
-    type: "action",
-    position: { x: 100, y: 100 },
-    data: { label: "Action Block" },
-  },
-];
+const initialNodes = [];
 
-const initialEdges = [{ id: "e1-2", source: "1", target: "2" }];
+const initialEdges = [];
 
 const ConditionNodeComponent = ({ id, data }) => (
   <div className="condition-node">
@@ -149,70 +136,82 @@ export default function App() {
     return adjacencyList;
   }
 
-  // Function to identify components and perform topological sort for each component
-  // Function to identify components and perform topological sort starting with condition nodes
-  function extractWorkflow(nodes, edges) {
-    const adjacencyList = createAdjacencyList(nodes, edges);
-    const visited = new Set();
-    const components = [];
-    const nodeMap = new Map(nodes.map(node => [node.id, node]));
-  
-    const isConditionNode = (node) => {
-      return node && node.data.label.startsWith('Condition');
-    };
-  
-    // Helper function for DFS and topological sort
-    function DFS(nodeId, orderedComponent) {
-      if (visited.has(nodeId)) return;
-      visited.add(nodeId);
-      const node = nodeMap.get(nodeId);
-      const neighbors = adjacencyList.get(nodeId) || [];
-  
-      // If it's a condition node or a standalone action node, add it to the ordered component
-      if (isConditionNode(node) || !neighbors.length) {
-        orderedComponent.push(nodeId); 
-      }
-  
-      // Continue the traversal for any neighbors
-      neighbors.forEach(neighbor => {
-        if (!visited.has(neighbor)) {
-          DFS(neighbor, orderedComponent);
-        }
-      });
-  
-      // After processing all neighbors, if it's an action node connected to a condition node, add it
-      if (!isConditionNode(node) && neighbors.length) {
-        orderedComponent.push(nodeId);
-      }
+  // Helper function to check for incoming edges
+const hasIncomingEdges = (nodeId, edges) => edges.some(edge => edge.target === nodeId);
+
+// Helper function to check if node is a condition node
+const isConditionNode = (node) => node.data.label.startsWith('Condition');
+
+// Function to traverse from a given node and collect the path
+const traverse = (nodeId, edges, nodeMap, path) => {
+  path.push(nodeMap.get(nodeId).data.summary);
+  const outgoingEdges = edges.filter(edge => edge.source === nodeId);
+  outgoingEdges.forEach(edge => {
+    if (isConditionNode(nodeMap.get(edge.target))) { // Continue if next node is a condition
+      traverse(edge.target, edges, nodeMap, path);
+    } else if (!isConditionNode(nodeMap.get(edge.target)) && !hasIncomingEdges(edge.target, edges)) { // Add action if it's an endpoint
+      path.push(nodeMap.get(edge.target).data.summary);
     }
+  });
+};
+
+// Main function to identify and separate connected components
+function extractWorkflow(nodes, edges) {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const workflows = [];
   
-    // Main loop through nodes to identify connected components
-    nodes.forEach(node => {
-      if (!visited.has(node.id)) {
-        const orderedComponent = [];
-        DFS(node.id, orderedComponent);
-        if (orderedComponent.length > 0) {
-          components.push(orderedComponent);
-        }
-      }
+  const isConditionNode = (node) => node.data.label.startsWith('Condition');
+  const isActionNode = (node) => node.data.label.startsWith('Action');
+  const findEdgesBySource = (sourceId) => edges.filter((e) => e.source === sourceId);
+
+  // Recursive function to build the workflow from a starting node
+  const buildWorkflowFromNode = (nodeId, workflow) => {
+    const node = nodeMap.get(nodeId);
+    if (!node) return; // In case the node is not found in the nodeMap, we return early.
+    
+    workflow.push(node.data.summary); // Add the current node summary to the workflow.
+    
+    const outgoingEdges = findEdgesBySource(nodeId);
+
+    if (isActionNode(node) && outgoingEdges.length === 0) {
+      // No recursive call needed since we don't continue from standalone Action nodes.
+      return;
+    }
+
+    // Continue the workflow with connected nodes.
+    outgoingEdges.forEach((edge) => {
+      buildWorkflowFromNode(edge.target, workflow);
     });
+  };
+
+  // Identify starting nodes (Condition nodes without incoming edges or standalone Action nodes).
+  nodes.forEach((node) => {
+    const hasIncoming = edges.some((e) => e.target === node.id);
+    if ((isConditionNode(node) && !hasIncoming) || (isActionNode(node) && !hasIncoming)) {
+      const workflow = [];
+      buildWorkflowFromNode(node.id, workflow);
+      workflows.push(workflow);
+    }
+  });
   
-    return components;
-  }
+  return workflows;
+}
 
   // Function to construct the workflow object based on the topological sort
   // Function to transform ordered components into an object with summaries
   // Function to construct the workflow object based on the topological sort
-  function constructOrderedWorkflow(sortedComponents, nodes) {
-    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-    const workflowSummary = sortedComponents.map((component) => {
-      return component.map((nodeId) => nodeMap.get(nodeId).data.summary);
-    });
-
-    // Filter out any undefined or empty summaries
-    return workflowSummary.map((component) =>
-      component.filter((summary) => summary && summary.trim() !== "")
+  function constructOrderedWorkflow(workflows, nodes) {
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+  
+    // Map each workflow path to its summary representation
+    const workflowSummaries = workflows.map(path =>
+      path.map(nodeId => {
+        const node = nodeMap.get(nodeId);
+        return node && node.data ? node.data.summary : undefined;
+      }).filter(summary => summary !== undefined) // Filter out undefined summaries
     );
+    
+    return workflowSummaries;
   }
 
   const [valueSelect, setValueSelect] = useState("MovingAverage");
@@ -761,21 +760,6 @@ export default function App() {
       ? summaryParts.join(" ")
       : "No operations defined";
   };
-  // };
-  //   if (node.data.label === "Action Block" && menus && menuSelections) {
-  //     for (const menuKey of Object.keys(menus)) {
-  //       const subMenuKey = menus[menuKey];
-  //       const selections = menuSelections[menuKey];
-  //       if (subMenuKey && selections) {
-  //         const selectionSummary = Object.values(selections).join(" ");
-  //         if (selectionSummary)
-  //           operations.push(`${subMenuKey} ${selectionSummary}`);
-  //       }
-  //     }
-  //   }
-
-  //   return operations.join(" "); // Format your summary text as needed
-  // };
 
   const saveStrategyToFirestore = async () => {
     console.log("Saving strategy to Firestore...");
@@ -783,9 +767,7 @@ export default function App() {
     // if it's not null, update the existing strategy
     // Call extractWorkflow and constructOrderedWorkflow to get the ordered actions
     const sortedComponents = extractWorkflow(nodes, edges);
-    const orderedWorkflow = constructOrderedWorkflow(sortedComponents, nodes);
-    // transform orderedWorkflow into a json string
-    const orderedWorkflowString = JSON.stringify(orderedWorkflow);
+    const orderedWorkflowString = JSON.stringify(sortedComponents);
     const strategyData = {
       // If using authenticated userId, replace 'nate' with the userId variable
       uid: "nate",
