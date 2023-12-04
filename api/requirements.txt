@@ -1,0 +1,7 @@
+Flask
+google-cloud-firestore
+pandas
+numpy
+alpaca-py
+requests
+python-dotenv
