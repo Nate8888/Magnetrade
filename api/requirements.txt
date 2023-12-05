@@ -1,7 +1,10 @@
+gunicorn
 Flask
+flask-cors
 google-cloud-firestore
 pandas
 numpy
 alpaca-py
 requests
 python-dotenv
+TA-Lib
