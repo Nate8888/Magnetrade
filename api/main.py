@@ -1,18 +1,19 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from google.cloud import firestore
 from google.oauth2 import service_account
+from flask_cors import CORS, cross_origin
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import google.auth
 import json
 import requests
 import os
+# import talib
 from dotenv import load_dotenv
 load_dotenv()
 
 
 app = Flask(__name__)
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 # Initialize Firestore DB
 credentials = service_account.Credentials.from_service_account_file('cred.json')
@@ -21,25 +22,21 @@ APCA_SECRET_KEY = os.getenv('APCA_SECRET_KEY')
 
 db = firestore.Client(credentials=credentials, project=credentials.project_id)
 
-# def calculate_rsi(ticker, period_quantity, aggregation):
-#     # Convert aggregation to a valid timeframe string for the get_historical_bars function
-#     timeframe = convert_to_timeframe(aggregation, period_quantity)
-#     # Call the external function to get historical data
-#     print("calling get_historical_bars with", ticker, timeframe)
-#     historical_data = get_historical_bars(ticker, timeframe)
-#     print(historical_data)
-#     # Convert the response to a DataFrame
-#     df = pd.DataFrame(historical_data.get(ticker))
-#     # Calculate the RSI
-#     print(ticker, "values")
-#     print(df['c'].values)
-#     return True
-#     # rsi = talib.RSI(df['c'].values)
-#     # return rsi
-
 def calculate_rsi(*args):
-    print("Called calculate_rsi", args[:3])
-    return 50
+    ticker,period_quantity, aggregation = args[:3]
+    # Convert aggregation to a valid timeframe string for the get_historical_bars function
+    timeframe = convert_to_timeframe(aggregation, period_quantity)
+    # Call the external function to get historical data
+    #print("calling get_historical_bars with", ticker, timeframe)
+    historical_data = get_historical_bars(ticker, timeframe)
+    #print(historical_data)
+    # Convert the response to a DataFrame
+    df = pd.DataFrame(historical_data.get(ticker))
+    # Calculate the RSI
+    #print(ticker, "values")
+    #print(df['c'].values)
+    #rsi = talib.RSI(df['c'].values)
+    return df['c'].values[-1]
 
 def calculate_bollinger_bands_middle(*args):
     print("Called calculate_bollinger_bands_middle", args[:4])
@@ -65,6 +62,10 @@ def execute_sell(*args):
     print("Called execute_sell", args)
     return 50
 
+def execute_number(*args):
+    print("Called execute_number", args[0])
+    return args[0]
+
 function_mappings = {
     "RSI (Relative Strength Index)": calculate_rsi,
     "RSI": calculate_rsi,  # This is a duplicate of "RSI (Relative Strength Index)
@@ -74,6 +75,7 @@ function_mappings = {
     "Volume": calculate_volume,
     "Buy": execute_buy,
     "Sell": execute_sell,
+    "Number": execute_number,
 }
 
 operators = ["<", ">", "=="]
@@ -135,29 +137,12 @@ def process_command(command):
         right_result = float(right_part)
     
     # Now, evaluate the condition with both results
+    print("left_result", left_result)
+    print("operator", operator)
+    print("right_result", right_result)
     condition_met = eval(f"{left_result} {operator} {right_result}")
     print(f"{left_operation[0]} Condition {'met' if condition_met else 'not met'} (left: {left_result}, right: {right_result})")
-    return condition_met
-        
-# Your list of commands from the input examples
-commands = [
-    [
-        "RSI (Relative Strength Index) AAPL 1 Days < RSI (Relative Strength Index) AAPL 1 Days",
-        "RSI (Relative Strength Index) AAPL 1 Days > RSI (Relative Strength Index) AAPL 1 Days",
-        "Current Stock Price AAPL < RSI (Relative Strength Index) AAPL 1 Days",
-        "Current Stock Price AAPL == 50",
-        "Bollinger Bands Middle AAPL 1 Days 2 < Bollinger Bands Middle AAPL 1 Weeks 2",
-        "Buy AAPL 10"
-    ],
-    # ... additional commands
-]
-
-# Process each command from the list
-for group in commands:
-    for command in group:
-      if not process_command(command):
-        print("Short Stopped @", command)
-        print()
+    return condition_met, left_result, right_result
 
 
 def get_historical_bars(ticker, timeframe="1Min", start_date="2023-01-01", end_date=None, sort="asc"):
@@ -180,6 +165,7 @@ def convert_to_timeframe(aggregation, quantity):
     abbreviations = {'Minutes': 'Min', 'Hours': 'H', 'Days': 'D', 'Weeks': 'W', 'Months': 'M'}
     return f"{quantity}{abbreviations.get(aggregation, 'Min')}"
 
+@cross_origin()
 @app.route('/strategies', methods=['GET'])
 def get_strategies():
     try:
@@ -197,10 +183,65 @@ def get_strategies():
     except Exception as e:
         return jsonify(error=str(e)), 500
 
+@cross_origin()
 @app.route('/')
 def home():
     print(get_historical_bars("AAPL", "1D"))
     return "Welcome to the Flask Firestore API!"
 
+@cross_origin()
+@app.route('/commands', methods=['GET', 'POST'])
+def commands():
+    command_to_run = None
+    # Get a single command from the request body or get from the query string
+    if request.method == 'GET':
+        command_to_run = request.args.get('command')
+    else:
+        all_commands = request.get_json()
+        print("Got data type", type(all_commands))
+        print("Got data", all_commands)
+        # this will hold data in the format:
+        '''
+        {
+            commands: [["RSI (Relative Strength Index) AAPL 1 Days < Number 30","Current Stock Price AAPL < Number 190","Buy AAPL 10 loop"],["Current Stock Price MSFT < Number 370","Buy MSFT 10 once"],["Volume MSFT 1 Days > Number 30000000","Buy MSFT 10 once"],["Buy GOOGL 10 once"],["Buy AAPL 100 once"]]
+        }
+        '''
+        # json is a dict, so we need to get the value of the "commands" key
+        all_commands = json.loads(all_commands.get("commands", "[]"))
+        results = {}
+        # Evaluate each command and then store the lhs, rhs, and result in the results dict with key as the command
+        for each_command_list in all_commands:
+            for each_command in each_command_list:
+                #print("each_command", each_command)
+                # skip if command ahs Buy or Sell
+                if "Buy" in each_command or "Sell" in each_command:
+                    continue
+                result, left_result, right_result = process_command(each_command)
+                results[each_command] = {
+                    "lhs": left_result,
+                    "rhs": right_result,
+                    "result": result
+                }
+        print("results", results)
+        return jsonify(results), 200
+
+    print("command_to_run", command_to_run)
+    result, left_result, right_result = process_command(command_to_run)
+    response_dict = {
+        "command": command_to_run,
+        "lhs": left_result,
+        "rhs": right_result,
+        "result": result
+    }
+    return jsonify(response_dict), 200
+
+# Create a route for the readiness_check from Google Cloud App Engine
+@cross_origin()
+@app.route('/readines_check')
+def readines_check():
+    return "OK", 200
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    HOST = '0.0.0.0'
+    PORT = 8080
+    app.run(HOST, PORT, debug=True)
