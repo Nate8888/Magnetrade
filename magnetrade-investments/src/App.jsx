@@ -8,7 +8,7 @@ import ReactFlow, {
   Handle,
   Position,
 } from "reactflow";
-import { FaSave, FaClock } from "react-icons/fa";
+import { FaSave, FaClock, FaPlay, FaStop } from "react-icons/fa";
 
 import "reactflow/dist/style.css";
 import "./style.css"; // Make sure to import the stylesheet
@@ -581,11 +581,10 @@ export default function App() {
               type: "input",
               inputType: "number",
             },
-            // Run only once
             {
               label: "Execution:",
               type: "select",
-              options: ["once", "loop"],
+              options: ["once", "loop", "none"],
             },
           ],
         },
@@ -604,7 +603,7 @@ export default function App() {
             {
               label: "Execution:",
               type: "select",
-              options: ["once", "loop"],
+              options: ["once", "loop", "none"],
             },
           ],
         },
@@ -819,7 +818,31 @@ export default function App() {
       : "No operations defined";
   };
 
-  const saveStrategyToFirestore = async () => {
+  const runStrategy = async (strategy) => {
+    console.log("Running strategy...");
+    // Call the saveStrategyToFirestore function
+    // if strategy has frequency of now or has no frequency, call getResultsFromAPI
+    // Await for the getResultsFromAPI to finish and then if it executed refresh the page
+    if (!strategy.frequency || strategy.frequency == "now") {
+      await getResultsFromAPI(strategy.id, strategy.orderedWorkflow, true);
+      window.location.reload();
+    } else {
+      // set the strategy.runningStatus to true
+      // update the strategy in firestore
+      strategy.runningStatus = true;
+      saveStrategyToFirestore(true);
+    }
+  };
+
+  const stopStrategy = async (strategy) => {
+    console.log("Stopping strategy...");
+    // set the strategy.runningStatus to false
+    // update the strategy in firestore
+    strategy.runningStatus = false;
+    saveStrategyToFirestore(false);
+  };
+
+  const saveStrategyToFirestore = async (run) => {
     console.log("Saving strategy to Firestore...");
     // get the state strategyId, if it's null, create a new strategy
     // if it's not null, update the existing strategy
@@ -835,6 +858,7 @@ export default function App() {
       },
       orderedWorkflow: orderedWorkflowString,
       frequency: selectedFrequency,
+      runningStatus: run,
     };
 
     try {
@@ -844,6 +868,7 @@ export default function App() {
         const strategyRef = doc(collection(db, "strategies"), strategyId);
         await setDoc(strategyRef, strategyData);
         console.log("Strategy updated successfully with ID: ", strategyRef.id);
+        window.location.reload();
       } else {
         const strategyRef = doc(collection(db, "strategies"));
         await setDoc(strategyRef, strategyData);
@@ -859,12 +884,16 @@ export default function App() {
   // Function to call to get the results from the API. This is called after loadStrategyFromFirestore.
   // it takes the orderedWorkflow string as input and sends a POST request to http://127.0.0.1:8080/commands
   // with the orderedWorkflow string as the json body with key 'commands'
-  const getResultsFromAPI = async (orderedWorkflowString) => {
+  const getResultsFromAPI = async (sid, orderedWorkflowString, execute) => {
     const url = "http://127.0.0.1:8080/commands";
     const requestOptions = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commands: orderedWorkflowString }),
+      body: JSON.stringify({
+        commands: orderedWorkflowString,
+        strategyId: sid,
+        execute: execute,
+      }),
     };
     try {
       const response = await fetch(url, requestOptions);
@@ -967,7 +996,7 @@ export default function App() {
         setStrategyId(strategySnap.id);
         setSelectedFrequency(strategyData.frequency || "now");
         console.log("Strategy loaded successfully!");
-        getResultsFromAPI(strategyData.orderedWorkflow);
+        getResultsFromAPI(strategySnap.id, strategyData.orderedWorkflow, false);
       } else {
         // Handle the case where there is no such strategy with given ID
         console.log("No such strategy!");
@@ -1024,50 +1053,115 @@ export default function App() {
           They are arrays of strings. I want to show them as a list. each in a line.
         */}
         <div
-          className="open-orders"
           style={{
             marginBottom: "20px",
-            maxHeight: "50px",
-            overflowY: "scroll",
             color: "black",
             fontSize: "small",
           }}
         >
           <strong>Open Orders:</strong>
-          <div>
-            {openOrders.map((order) => (
-              <div key={order}>{order}</div>
-            ))}
+          <div
+            className="open-orders"
+            style={{
+              marginBottom: "20px",
+              maxHeight: "50px",
+              overflowY: "scroll",
+              color: "black",
+              fontSize: "small",
+            }}
+          >
+            <div>
+              {openOrders.map((order) => (
+                <div key={order + Math.random() * 999 + 1}>{order}</div>
+              ))}
+            </div>
           </div>
         </div>
         <hr />
         <div
-          className="closed-orders"
           style={{
             marginBottom: "20px",
-            maxHeight: "50px",
-            overflowY: "scroll",
             color: "black",
             fontSize: "small",
           }}
         >
           <strong>Closed Orders:</strong>
-          <div>
-            {closedOrders.map((order) => (
-              <div key={order}>{order}</div>
-            ))}
+          <div
+            className="closed-orders"
+            style={{
+              marginBottom: "20px",
+              maxHeight: "50px",
+              overflowY: "scroll",
+              color: "black",
+              fontSize: "small",
+            }}
+          >
+            <div>
+              {closedOrders.map((order) => (
+                <div key={order + Math.random() * 999 + 1}>{order}</div>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="strategies">
           {allStrategies.map((strategy) => (
-            <button
-              key={strategy.id}
-              onClick={() => setStrategyId(strategy.id)}
-              style={{ width: "100%", padding: "5px 10px", margin: "5px 0" }}
-            >
-              Strat: {strategy.id}
-            </button>
+            <div key={strategy.id} style={{ marginBottom: "10px" }}>
+              <button
+                onClick={() => setStrategyId(strategy.id)}
+                style={{
+                  width: "100%",
+                  padding: "5px 10px",
+                  margin: "5px 0",
+                  background: "black",
+                  color: "white",
+                  border: "none",
+                }}
+              >
+                Strat: {strategy.id}
+              </button>
+              {!strategy.runningStatus ? (
+                <button
+                  // Call runStrategy with the strategy.id
+                  onClick={() => runStrategy(strategy)}
+                  style={{
+                    width: "100%",
+                    padding: "5px 10px",
+                    margin: "5px 0",
+                    background: "#33cc33",
+                    color: "white",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  disabled={strategyId !== strategy.id}
+                >
+                  <FaPlay style={{ marginRight: "5px" }} />
+                  Play
+                </button>
+              ) : (
+                <button
+                  onClick={() => stopStrategy(strategy)}
+                  style={{
+                    width: "100%",
+                    padding: "5px 10px",
+                    margin: "5px 0",
+                    background: "#ff3333",
+                    color: "white",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  // disabled if strategyId is null or doesn't match strategy.id
+                  disabled={strategyId !== strategy.id}
+                >
+                  <FaStop style={{ marginRight: "5px" }} />
+                  Stop
+                </button>
+              )}
+            </div>
           ))}
         </div>
         <button
@@ -1136,10 +1230,10 @@ export default function App() {
             border: "1px solid #3385ff",
           }}
         >
-          <FaClock />
+          <FaClock style={{ marginTop: "3px" }} />
         </button>
         <button
-          onClick={saveStrategyToFirestore}
+          onClick={() => saveStrategyToFirestore(false)}
           style={{
             position: "absolute",
             right: 20,
