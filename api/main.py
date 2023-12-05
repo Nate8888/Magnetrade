@@ -66,12 +66,27 @@ def calculate_rsi(*args):
     return rsi[-1]
 
 def calculate_bollinger_bands_middle(*args):
-    print("Called calculate_bollinger_bands_middle", args[:4])
-    return 50
+    asset, look_back_period, aggregation, std_dev = args[:4]
+    timeframe = convert_to_timeframe(aggregation, look_back_period)
+    historical_data = get_historical_bars(asset, timeframe)
+    df = pd.DataFrame(historical_data.get(asset))
+    upper, middle, lower = talib.BBANDS(df['c'].values, 
+                                        timeperiod=int(look_back_period), 
+                                        nbdevup=float(std_dev), 
+                                        nbdevdn=float(std_dev), 
+                                        matype=0)  # matype=0 is for a simple moving average
+    return middle[-1]
 
 def calculate_macd_line(*args):
-    print("Called calculate_macd_line", args[:5])
-    return 50
+    asset, fast_period, slow_period, signal_period, aggregation = args[:5]
+    timeframe = convert_to_timeframe(aggregation, max(int(fast_period), int(slow_period), int(signal_period)))
+    historical_data = get_historical_bars(asset, timeframe)
+    df = pd.DataFrame(historical_data.get(asset))
+    macd, macdsignal, macdhist = talib.MACD(df['c'].values, 
+                                             fastperiod=int(fast_period), 
+                                             slowperiod=int(slow_period), 
+                                             signalperiod=int(signal_period))
+    return macd[-1]
 
 def get_current_stock_price(*args):
     print("Called get_current_stock_price", args[0])
