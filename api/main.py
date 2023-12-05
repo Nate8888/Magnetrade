@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="build", static_url_path="/")
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 
@@ -311,10 +311,9 @@ def get_strategies():
         return jsonify(error=str(e)), 500
 
 @cross_origin()
-@app.route('/')
-def home():
-    print(get_historical_bars("AAPL", "1D"))
-    return "Welcome to the Flask Firestore API!"
+@app.route("/")
+def index():
+    return app.send_static_file("index.html")
 
 @cross_origin()
 @app.route('/commands', methods=['GET', 'POST'])

@@ -8,3 +8,15 @@ instance_class: F2
 readiness_check:
   path: "/readines_check"
   app_start_timeout_sec: 1800
+
+handlers:
+# frontend
+- url: /static
+  static_dir: build/dist
+- url: /(.*\.(json|ico|js|html))$
+  static_files: build/\1
+  upload: build/.*\.(json|ico|js|html)$
+
+# backend
+- url: /.*
+  script: auto

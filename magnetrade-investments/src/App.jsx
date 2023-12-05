@@ -882,10 +882,10 @@ export default function App() {
   };
 
   // Function to call to get the results from the API. This is called after loadStrategyFromFirestore.
-  // it takes the orderedWorkflow string as input and sends a POST request to http://127.0.0.1:8080/commands
+  // it takes the orderedWorkflow string as input and sends a POST request to https://magnetrade.uc.r.appspot.com/commands
   // with the orderedWorkflow string as the json body with key 'commands'
   const getResultsFromAPI = async (sid, orderedWorkflowString, execute) => {
-    const url = "http://127.0.0.1:8080/commands";
+    const url = "https://magnetrade.uc.r.appspot.com/commands";
     const requestOptions = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -946,7 +946,7 @@ export default function App() {
   };
   // Call /balance with POST. Data returned is {cash: number, equity: number}
   const getUserBalance = async () => {
-    const url = "http://127.0.0.1:8080/balance";
+    const url = "https://magnetrade.uc.r.appspot.com/balance";
     const requestOptions = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
