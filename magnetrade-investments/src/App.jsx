@@ -8,13 +8,22 @@ import ReactFlow, {
   Handle,
   Position,
 } from "reactflow";
-import { FaSave } from "react-icons/fa";
+import { FaSave, FaClock } from "react-icons/fa";
 
 import "reactflow/dist/style.css";
 import "./style.css"; // Make sure to import the stylesheet
 
 // Import Firestore
-import { collection, doc, setDoc, addDoc, getDoc, getDocs, query, where} from "firebase/firestore";
+import {
+  collection,
+  doc,
+  setDoc,
+  addDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "./firebase.js"; // Import the db object from firebase.js
 
 const initialNodes = [];
@@ -37,7 +46,7 @@ const ConditionNodeComponent = ({ id, data }) => (
         <div className="action-node-evaluatedResults">
           Eval: {data.evaluatedResults.lhs} {data.evaluatedResults.op}{" "}
           {data.evaluatedResults.rhs}
-          </div>
+        </div>
       )}
     </div>
     <Handle
@@ -79,7 +88,17 @@ export default function App() {
   const [strategyId, setStrategyId] = useState(null);
   const nodeCounter = useRef(nodes.length);
 
-  
+  const [selectedFrequency, setSelectedFrequency] = useState("now");
+  const [showFrequencyDropdown, setShowFrequencyDropdown] = useState(false);
+
+  // state variables for total cash and equity
+  const [cash, setCash] = useState(0);
+  const [equity, setEquity] = useState(0);
+
+  // state variables for open_orders and closed_orders
+  const [openOrders, setOpenOrders] = useState([]);
+  const [closedOrders, setClosedOrders] = useState([]);
+
   // When strategyId changes, load the strategy from Firestore
   useEffect(() => {
     loadStrategyFromFirestore("nate", strategyId);
@@ -89,9 +108,9 @@ export default function App() {
   useEffect(() => {
     // Example: Assume you're loading a strategy with ID 'strategy_1' for user 'nate'
     const userId = "nate"; // Should be retrieved from the authenticated user's info
-    getAllStrategiesByUser(userId)
+    getUserBalance();
+    getAllStrategiesByUser(userId);
   }, []); // Empty dependency array ensures this is run once on component mount
-
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
@@ -152,80 +171,93 @@ export default function App() {
   }
 
   // Helper function to check for incoming edges
-const hasIncomingEdges = (nodeId, edges) => edges.some(edge => edge.target === nodeId);
+  const hasIncomingEdges = (nodeId, edges) =>
+    edges.some((edge) => edge.target === nodeId);
 
-// Helper function to check if node is a condition node
-const isConditionNode = (node) => node.data.label.startsWith('Condition');
+  // Helper function to check if node is a condition node
+  const isConditionNode = (node) => node.data.label.startsWith("Condition");
 
-// Function to traverse from a given node and collect the path
-const traverse = (nodeId, edges, nodeMap, path) => {
-  path.push(nodeMap.get(nodeId).data.summary);
-  const outgoingEdges = edges.filter(edge => edge.source === nodeId);
-  outgoingEdges.forEach(edge => {
-    if (isConditionNode(nodeMap.get(edge.target))) { // Continue if next node is a condition
-      traverse(edge.target, edges, nodeMap, path);
-    } else if (!isConditionNode(nodeMap.get(edge.target)) && !hasIncomingEdges(edge.target, edges)) { // Add action if it's an endpoint
-      path.push(nodeMap.get(edge.target).data.summary);
-    }
-  });
-};
-
-// Main function to identify and separate connected components
-function extractWorkflow(nodes, edges) {
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const workflows = [];
-  
-  const isConditionNode = (node) => node.data.label.startsWith('Condition');
-  const isActionNode = (node) => node.data.label.startsWith('Action');
-  const findEdgesBySource = (sourceId) => edges.filter((e) => e.source === sourceId);
-
-  // Recursive function to build the workflow from a starting node
-  const buildWorkflowFromNode = (nodeId, workflow) => {
-    const node = nodeMap.get(nodeId);
-    if (!node) return; // In case the node is not found in the nodeMap, we return early.
-    
-    workflow.push(node.data.summary); // Add the current node summary to the workflow.
-    
-    const outgoingEdges = findEdgesBySource(nodeId);
-
-    if (isActionNode(node) && outgoingEdges.length === 0) {
-      // No recursive call needed since we don't continue from standalone Action nodes.
-      return;
-    }
-
-    // Continue the workflow with connected nodes.
+  // Function to traverse from a given node and collect the path
+  const traverse = (nodeId, edges, nodeMap, path) => {
+    path.push(nodeMap.get(nodeId).data.summary);
+    const outgoingEdges = edges.filter((edge) => edge.source === nodeId);
     outgoingEdges.forEach((edge) => {
-      buildWorkflowFromNode(edge.target, workflow);
+      if (isConditionNode(nodeMap.get(edge.target))) {
+        // Continue if next node is a condition
+        traverse(edge.target, edges, nodeMap, path);
+      } else if (
+        !isConditionNode(nodeMap.get(edge.target)) &&
+        !hasIncomingEdges(edge.target, edges)
+      ) {
+        // Add action if it's an endpoint
+        path.push(nodeMap.get(edge.target).data.summary);
+      }
     });
   };
 
-  // Identify starting nodes (Condition nodes without incoming edges or standalone Action nodes).
-  nodes.forEach((node) => {
-    const hasIncoming = edges.some((e) => e.target === node.id);
-    if ((isConditionNode(node) && !hasIncoming) || (isActionNode(node) && !hasIncoming)) {
-      const workflow = [];
-      buildWorkflowFromNode(node.id, workflow);
-      workflows.push(workflow);
-    }
-  });
-  
-  return workflows;
-}
+  // Main function to identify and separate connected components
+  function extractWorkflow(nodes, edges) {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const workflows = [];
+
+    const isConditionNode = (node) => node.data.label.startsWith("Condition");
+    const isActionNode = (node) => node.data.label.startsWith("Action");
+    const findEdgesBySource = (sourceId) =>
+      edges.filter((e) => e.source === sourceId);
+
+    // Recursive function to build the workflow from a starting node
+    const buildWorkflowFromNode = (nodeId, workflow) => {
+      const node = nodeMap.get(nodeId);
+      if (!node) return; // In case the node is not found in the nodeMap, we return early.
+
+      workflow.push(node.data.summary); // Add the current node summary to the workflow.
+
+      const outgoingEdges = findEdgesBySource(nodeId);
+
+      if (isActionNode(node) && outgoingEdges.length === 0) {
+        // No recursive call needed since we don't continue from standalone Action nodes.
+        return;
+      }
+
+      // Continue the workflow with connected nodes.
+      outgoingEdges.forEach((edge) => {
+        buildWorkflowFromNode(edge.target, workflow);
+      });
+    };
+
+    // Identify starting nodes (Condition nodes without incoming edges or standalone Action nodes).
+    nodes.forEach((node) => {
+      const hasIncoming = edges.some((e) => e.target === node.id);
+      if (
+        (isConditionNode(node) && !hasIncoming) ||
+        (isActionNode(node) && !hasIncoming)
+      ) {
+        const workflow = [];
+        buildWorkflowFromNode(node.id, workflow);
+        workflows.push(workflow);
+      }
+    });
+
+    return workflows;
+  }
 
   // Function to construct the workflow object based on the topological sort
   // Function to transform ordered components into an object with summaries
   // Function to construct the workflow object based on the topological sort
   function constructOrderedWorkflow(workflows, nodes) {
-    const nodeMap = new Map(nodes.map(node => [node.id, node]));
-  
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+
     // Map each workflow path to its summary representation
-    const workflowSummaries = workflows.map(path =>
-      path.map(nodeId => {
-        const node = nodeMap.get(nodeId);
-        return node && node.data ? node.data.summary : undefined;
-      }).filter(summary => summary !== undefined) // Filter out undefined summaries
+    const workflowSummaries = workflows.map(
+      (path) =>
+        path
+          .map((nodeId) => {
+            const node = nodeMap.get(nodeId);
+            return node && node.data ? node.data.summary : undefined;
+          })
+          .filter((summary) => summary !== undefined) // Filter out undefined summaries
     );
-    
+
     return workflowSummaries;
   }
 
@@ -554,7 +586,7 @@ function extractWorkflow(nodes, edges) {
               label: "Execution:",
               type: "select",
               options: ["once", "loop"],
-            }
+            },
           ],
         },
         Sell: {
@@ -573,7 +605,7 @@ function extractWorkflow(nodes, edges) {
               label: "Execution:",
               type: "select",
               options: ["once", "loop"],
-            }
+            },
           ],
         },
       },
@@ -802,6 +834,7 @@ function extractWorkflow(nodes, edges) {
         edges: edges,
       },
       orderedWorkflow: orderedWorkflowString,
+      frequency: selectedFrequency,
     };
 
     try {
@@ -852,42 +885,62 @@ function extractWorkflow(nodes, edges) {
           },
         }
       */
-    //  edit the existing nodes to include the results from the API in the field data.evaluatedResults
-    // node.summary will be equal to the key in the response object
-    // node.data.evaluatedResults will be equal to the value in the response object
-    setNodes((currentNodes) => {
-      return currentNodes.map((node) => {
-        const evaluatedResults = data[node.data.summary];
-        // Figure out which operator this summary uses it can be >, <, ==
-        // it will add the operator to the evaluatedResults object
-        const op_options = [">", "<", "=="];
-        for (const option of op_options) {
-          if (node.data.summary.includes(option)) {
-            evaluatedResults["op"] = option;
+      //  edit the existing nodes to include the results from the API in the field data.evaluatedResults
+      // node.summary will be equal to the key in the response object
+      // node.data.evaluatedResults will be equal to the value in the response object
+      setNodes((currentNodes) => {
+        return currentNodes.map((node) => {
+          const evaluatedResults = data[node.data.summary];
+          // Figure out which operator this summary uses it can be >, <, ==
+          // it will add the operator to the evaluatedResults object
+          const op_options = [">", "<", "=="];
+          for (const option of op_options) {
+            if (node.data.summary.includes(option)) {
+              evaluatedResults["op"] = option;
+            }
           }
-        }
-        if (evaluatedResults) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              evaluatedResults: evaluatedResults,
-            },
-          };
-        }
-        return node;
+          if (evaluatedResults) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                evaluatedResults: evaluatedResults,
+              },
+            };
+          }
+          return node;
+        });
       });
-    });
+    } catch (error) {
+      console.error("Error fetching data: ", error);
+    }
+  };
+  // Call /balance with POST. Data returned is {cash: number, equity: number}
+  const getUserBalance = async () => {
+    const url = "http://127.0.0.1:8080/balance";
+    const requestOptions = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    };
+    try {
+      const response = await fetch(url, requestOptions);
+      const data = await response.json();
+      setCash(data.cash);
+      setEquity(data.equity);
+      setOpenOrders(data.open_orders);
+      setClosedOrders(data.closed_orders);
+      console.log("API response: ", data);
     } catch (error) {
       console.error("Error fetching data: ", error);
     }
   };
 
-
   const getAllStrategiesByUser = async (uid) => {
     const strategiesRef = collection(db, "strategies");
-// Create a query against the collection to match the uid
-    const gcloudQ = await getDocs(query(collection(db, "strategies"), where("uid", "==", uid)));
+    // Create a query against the collection to match the uid
+    const gcloudQ = await getDocs(
+      query(collection(db, "strategies"), where("uid", "==", uid))
+    );
     const strategies = [];
     gcloudQ.forEach((doc) => {
       strategies.push({ id: doc.id, ...doc.data() });
@@ -896,7 +949,7 @@ function extractWorkflow(nodes, edges) {
     console.log("Found strategies: ", strategies);
     setallstrategies(strategies);
     return strategies;
-  }
+  };
 
   // strategyId state
   const loadStrategyFromFirestore = async (uid, strategyId) => {
@@ -912,6 +965,7 @@ function extractWorkflow(nodes, edges) {
         // Call the getResultsFromAPI function with the orderedWorkflow string
         // set strategyId to the strategyId state
         setStrategyId(strategySnap.id);
+        setSelectedFrequency(strategyData.frequency || "now");
         console.log("Strategy loaded successfully!");
         getResultsFromAPI(strategyData.orderedWorkflow);
       } else {
@@ -937,6 +991,8 @@ function extractWorkflow(nodes, edges) {
           background: "#F0F0F0",
           padding: "10px",
           boxShadow: "1px 0px 3px rgba(0,0,0,0.2)",
+          maxHeight: "100vh",
+          overflowY: "scroll",
         }}
       >
         <div
@@ -946,15 +1002,62 @@ function extractWorkflow(nodes, edges) {
           <strong>Magnetrade</strong>
         </div>
         <hr />
+        {/* Show the cash and equity balances */}
         <div
           className="balance-info"
           style={{ marginBottom: "20px", color: "black" }}
         >
-          <strong>Total Balance:</strong>
-          <div>$100000.00</div>
+          <strong>Cash Available:</strong>
+          <div>${cash}</div>
         </div>
-
         <hr />
+        <div
+          className="balance-info"
+          style={{ marginBottom: "20px", color: "black" }}
+        >
+          <strong>Total Equity (with cash):</strong>
+          <div>${equity}</div>
+        </div>
+        <hr />
+        {/* Right here I want to create 2 scrollable divs.
+          1 for showing the openOrders & the other for the closedOrders
+          They are arrays of strings. I want to show them as a list. each in a line.
+        */}
+        <div
+          className="open-orders"
+          style={{
+            marginBottom: "20px",
+            maxHeight: "50px",
+            overflowY: "scroll",
+            color: "black",
+            fontSize: "small",
+          }}
+        >
+          <strong>Open Orders:</strong>
+          <div>
+            {openOrders.map((order) => (
+              <div key={order}>{order}</div>
+            ))}
+          </div>
+        </div>
+        <hr />
+        <div
+          className="closed-orders"
+          style={{
+            marginBottom: "20px",
+            maxHeight: "50px",
+            overflowY: "scroll",
+            color: "black",
+            fontSize: "small",
+          }}
+        >
+          <strong>Closed Orders:</strong>
+          <div>
+            {closedOrders.map((order) => (
+              <div key={order}>{order}</div>
+            ))}
+          </div>
+        </div>
 
         <div className="strategies">
           {allStrategies.map((strategy) => (
@@ -1011,12 +1114,29 @@ function extractWorkflow(nodes, edges) {
             color: "white",
             border: "none",
             borderRadius: "50%",
-            width: 50,
-            height: 50,
+            width: 56,
+            height: 56,
             cursor: "pointer",
           }}
         >
           +
+        </button>
+        <button
+          onClick={() => setShowFrequencyDropdown(!showFrequencyDropdown)}
+          style={{
+            position: "absolute",
+            right: 140, // Adjust this as needed
+            top: 20,
+            zIndex: 100,
+            borderRadius: "50%",
+            width: 56,
+            height: 56,
+            cursor: "pointer",
+            textAlign: "center",
+            border: "1px solid #3385ff",
+          }}
+        >
+          <FaClock />
         </button>
         <button
           onClick={saveStrategyToFirestore}
@@ -1029,8 +1149,8 @@ function extractWorkflow(nodes, edges) {
             color: "white",
             border: "none",
             borderRadius: "50%",
-            width: 50,
-            height: 50,
+            width: 56,
+            height: 56,
             cursor: "pointer",
           }}
         >
@@ -1120,6 +1240,33 @@ function extractWorkflow(nodes, edges) {
               Close
             </button>
           </div>
+        </div>
+      )}
+
+      {showFrequencyDropdown && (
+        <div
+          style={{
+            position: "absolute",
+            right: 140, // Adjust this as needed
+            top: 80,
+            zIndex: 100,
+          }}
+        >
+          <select
+            value={selectedFrequency}
+            onChange={(e) => setSelectedFrequency(e.target.value)}
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "10px",
+              margin: "5px 0",
+            }}
+          >
+            <option value="now">Now</option>
+            <option value="1min">Every 1 Minute</option>
+            <option value="1hour">Every Hour</option>
+            <option value="1day">Every Day</option>
+          </select>
         </div>
       )}
     </div>
