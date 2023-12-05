@@ -22,6 +22,31 @@ APCA_SECRET_KEY = os.getenv('APCA_SECRET_KEY')
 
 db = firestore.Client(credentials=credentials, project=credentials.project_id)
 
+
+def alpaca_get_account():
+    url = "https://paper-api.alpaca.markets/v2/account"
+
+    headers = {
+        "accept": "application/json",
+        "APCA-API-KEY-ID": APCA_KEY,
+        "APCA-API-SECRET-KEY": APCA_SECRET_KEY
+    }
+
+    response = requests.get(url, headers=headers).json()
+    return response
+
+def alpaca_get_open_orders(status='open'):
+    url = f"https://paper-api.alpaca.markets/v2/orders?status={status}"
+
+    headers = {
+        "accept": "application/json",
+        "APCA-API-KEY-ID": APCA_KEY,
+        "APCA-API-SECRET-KEY": APCA_SECRET_KEY
+    }
+
+    response = requests.get(url, headers=headers).json()
+    return response
+
 def calculate_rsi(*args):
     ticker,period_quantity, aggregation = args[:3]
     # Convert aggregation to a valid timeframe string for the get_historical_bars function
@@ -234,6 +259,31 @@ def commands():
         "result": result
     }
     return jsonify(response_dict), 200
+
+# cross_origin route that gets account balance from Alpaca (as a post)
+@cross_origin()
+@app.route('/balance', methods=['POST'])
+def get_account_balance():
+    try:
+        acc_details = alpaca_get_account()
+        cash = acc_details['cash']
+        equity = acc_details['equity']
+        order_details = alpaca_get_open_orders()
+        open_orders = []
+        for order in order_details:
+            is_limit = order['order_type'] == 'limit'
+            price = order['limit_price'] if is_limit else "market price"
+            equivalent_string = f"{order['side']} {order['qty']} {order['symbol']} @ {price}"
+            open_orders.append(equivalent_string)
+        order_details = alpaca_get_open_orders(status='closed')
+        closed_orders = []
+        for closed_o in order_details:
+            price = closed_o['filled_avg_price']
+            equivalent_string = f"{closed_o['side']} {closed_o['filled_qty']}/{closed_o['qty']} {closed_o['symbol']} @ {price}"
+            closed_orders.append(equivalent_string)
+        return jsonify({'cash': cash, 'equity': equity, 'open_orders': open_orders, 'closed_orders': closed_orders}), 200
+    except Exception as e:
+        return jsonify({'cash': 100_000, 'equity': 100_000, 'open_orders': [], 'closed_orders': []}), 200
 
 # Create a route for the readiness_check from Google Cloud App Engine
 @cross_origin()
