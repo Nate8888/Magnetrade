@@ -6,7 +6,7 @@ import pandas as pd
 import json
 import requests
 import os
-# import talib
+import talib
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -45,6 +45,8 @@ def alpaca_get_open_orders(status='open'):
     }
 
     response = requests.get(url, headers=headers).json()
+    # only return the orders that are not cancelled
+    response = [order for order in response if order['status'] != 'canceled']
     return response
 
 def calculate_rsi(*args):
@@ -60,8 +62,8 @@ def calculate_rsi(*args):
     # Calculate the RSI
     #print(ticker, "values")
     #print(df['c'].values)
-    #rsi = talib.RSI(df['c'].values)
-    return df['c'].values[-1]
+    rsi = talib.RSI(df['c'].values)
+    return rsi[-1]
 
 def calculate_bollinger_bands_middle(*args):
     print("Called calculate_bollinger_bands_middle", args[:4])
@@ -73,19 +75,104 @@ def calculate_macd_line(*args):
 
 def get_current_stock_price(*args):
     print("Called get_current_stock_price", args[0])
-    return 50
+    bars = get_historical_bars(args[0])
+    first_val = bars.get(args[0])[0]['c']
+    return first_val
 
 def calculate_volume(*args):
     print("Called calculate_volume", args[:2])
-    return 50
+    timeframe = convert_to_timeframe(args[2], args[1])
+    bars = get_historical_bars(args[0], timeframe)
+    print(bars)
+    first_val = bars.get(args[0])[0]['v']
+    return first_val
 
-def execute_buy(*args):
-    print("Called execute_buy", args)
-    return 50
+def execute_buy(strategy_id, whole_str):
+    print("Called execute_buy", whole_str)
+    if type(whole_str) != str or "Buy" not in whole_str:
+        return False
+    # check if str 'none' is in whole_str
+    if 'none' in whole_str.lower(): # Skip
+        return False
+    else: # Create a sell order with alpaca
+        splitted_str = whole_str.split(" ")
+        url = "https://paper-api.alpaca.markets/v2/orders"
 
-def execute_sell(*args):
-    print("Called execute_sell", args)
-    return 50
+        payload = {
+            "side": "buy",
+            "type": "market",
+            "time_in_force": "day",
+            "symbol": f"{splitted_str[1]}",
+            "qty": f"{splitted_str[2]}",
+        }
+        headers = {
+            "accept": "application/json",
+            "APCA-API-KEY-ID": APCA_KEY,
+            "APCA-API-SECRET-KEY": APCA_SECRET_KEY
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        # If response status code is 200, then we have to check if whole_str has loop or once
+        if response.status_code == 200:
+            if 'once' in whole_str.lower():
+                update_ordered_workflow(strategy_id, whole_str, whole_str.replace('once', 'none'))
+
+        return response
+
+# Given a strategy_id, and the initial string, and the end string, go through the orderedWorkflow
+# in the firestore db
+# and update the string accordingly
+def update_ordered_workflow(strategy_id, initial_str, end_str):
+    print("Updating ordered workflow", strategy_id, initial_str, end_str)
+    strategies_ref = db.collection('strategies')
+    strategy_ref = strategies_ref.document(strategy_id)
+    strategy = strategy_ref.get().to_dict()
+    ordered_workflow = json.loads(strategy['orderedWorkflow'])
+    print("ordered_workflow", ordered_workflow)
+    for each_command_group in ordered_workflow:
+        for i in range(len(each_command_group)):
+            if each_command_group[i] == initial_str:
+                each_command_group[i] = end_str
+    
+    strategy['orderedWorkflow'] = json.dumps(ordered_workflow)
+    all_nodes = strategy['strategy']['nodes']
+    for i in range(len(all_nodes)):
+        if all_nodes[i]['data']['summary'] == initial_str:
+            all_nodes[i]['data']['summary'] = end_str
+    strategy_ref.update(strategy)
+
+    return True
+
+def execute_sell(strategy_id, whole_str):
+    print("Called execute_sell", whole_str)
+    if type(whole_str) != str or "Sell" not in whole_str:
+        return False
+    if 'none' in whole_str.lower(): # Skip
+        return False
+    else: # Create a sell order with alpaca
+        splitted_str = whole_str.split(" ")
+        url = "https://paper-api.alpaca.markets/v2/orders"
+
+        payload = {
+            "side": "sell",
+            "type": "market",
+            "time_in_force": "day",
+            "symbol": f"{splitted_str[1]}",
+            "qty": f"{splitted_str[2]}",
+        }
+        headers = {
+            "accept": "application/json",
+            "APCA-API-KEY-ID": APCA_KEY,
+            "APCA-API-SECRET-KEY": APCA_SECRET_KEY
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        # If response status code is 200, then we have to check if whole_str has loop or once
+        if response.status_code == 200:
+            if 'once' in whole_str.lower():
+                update_ordered_workflow(strategy_id, whole_str, whole_str.replace('once', 'none'))
+
+        return response
 
 def execute_number(*args):
     print("Called execute_number", args[0])
@@ -232,21 +319,36 @@ def commands():
         }
         '''
         # json is a dict, so we need to get the value of the "commands" key
+        strategy_id = all_commands.get("strategyId")
+        execute = all_commands.get("execute", False)
         all_commands = json.loads(all_commands.get("commands", "[]"))
         results = {}
         # Evaluate each command and then store the lhs, rhs, and result in the results dict with key as the command
         for each_command_list in all_commands:
+            broke_condition = False
             for each_command in each_command_list:
                 #print("each_command", each_command)
                 # skip if command ahs Buy or Sell
                 if "Buy" in each_command or "Sell" in each_command:
-                    continue
+                    if not execute:
+                        continue
+                    if not broke_condition:
+                        # Execute the buy or sell command
+                        if "Buy" in each_command:
+                            ret = execute_buy(strategy_id, each_command)
+                            continue
+                        else:
+                            ret = execute_sell(strategy_id, each_command)
+                            continue
+                        
                 result, left_result, right_result = process_command(each_command)
                 results[each_command] = {
                     "lhs": left_result,
                     "rhs": right_result,
                     "result": result
                 }
+                if not result:
+                    broke_condition = True
         print("results", results)
         return jsonify(results), 200
 
