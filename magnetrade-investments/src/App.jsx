@@ -14,7 +14,7 @@ import "reactflow/dist/style.css";
 import "./style.css"; // Make sure to import the stylesheet
 
 // Import Firestore
-import { collection, doc, setDoc, addDoc, getDoc } from "firebase/firestore";
+import { collection, doc, setDoc, addDoc, getDoc, getDocs, query, where} from "firebase/firestore";
 import { db } from "./firebase.js"; // Import the db object from firebase.js
 
 const initialNodes = [];
@@ -32,6 +32,13 @@ const ConditionNodeComponent = ({ id, data }) => (
     <div className="condition-node-inner">
       <div className="condition-node-label">{data.label}</div>
       <div className="condition-node-summary">{data.summary}</div>
+      {/* if data.evaluatedResults, display data.evaluatedResults.lhs data.evaluatedResults.op data.evaluatedResults.rhs in glowing green*/}
+      {data.evaluatedResults && (
+        <div className="action-node-evaluatedResults">
+          Eval: {data.evaluatedResults.lhs} {data.evaluatedResults.op}{" "}
+          {data.evaluatedResults.rhs}
+          </div>
+      )}
     </div>
     <Handle
       type="source"
@@ -67,16 +74,24 @@ export default function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [showDropdown, setShowDropdown] = useState(false);
   const [contextMenuNode, setContextMenuNode] = useState(null);
+  // list of strategies from the menu
+  const [allStrategies, setallstrategies] = useState([]);
   const [strategyId, setStrategyId] = useState(null);
   const nodeCounter = useRef(nodes.length);
 
+  
+  // When strategyId changes, load the strategy from Firestore
+  useEffect(() => {
+    loadStrategyFromFirestore("nate", strategyId);
+  }, [strategyId]);
   // Call the load strategy function with specific strategyId when the component mounts
+
   useEffect(() => {
     // Example: Assume you're loading a strategy with ID 'strategy_1' for user 'nate'
-    const strategyId = "ZxxfBz0W2wOfH2qoOB1B";
     const userId = "nate"; // Should be retrieved from the authenticated user's info
-    loadStrategyFromFirestore(userId, strategyId);
+    getAllStrategiesByUser(userId)
   }, []); // Empty dependency array ensures this is run once on component mount
+
 
   const onConnect = useCallback(
     (params) => setEdges((eds) => addEdge(params, eds)),
@@ -288,7 +303,7 @@ function extractWorkflow(nodes, edges) {
         {
           label: "Operator",
           type: "select",
-          options: [">", "<", "="],
+          options: [">", "<", "=="],
         },
       ],
     },
@@ -534,6 +549,12 @@ function extractWorkflow(nodes, edges) {
               type: "input",
               inputType: "number",
             },
+            // Run only once
+            {
+              label: "Execution:",
+              type: "select",
+              options: ["once", "loop"],
+            }
           ],
         },
         Sell: {
@@ -548,6 +569,11 @@ function extractWorkflow(nodes, edges) {
               type: "input",
               inputType: "number",
             },
+            {
+              label: "Execution:",
+              type: "select",
+              options: ["once", "loop"],
+            }
           ],
         },
       },
@@ -789,11 +815,88 @@ function extractWorkflow(nodes, edges) {
         const strategyRef = doc(collection(db, "strategies"));
         await setDoc(strategyRef, strategyData);
         console.log("Strategy saved successfully with ID: ", strategyRef.id);
+        // refresh the page
+        window.location.reload();
       }
     } catch (error) {
       console.error("Error saving strategy: ", error);
     }
   };
+
+  // Function to call to get the results from the API. This is called after loadStrategyFromFirestore.
+  // it takes the orderedWorkflow string as input and sends a POST request to http://127.0.0.1:8080/commands
+  // with the orderedWorkflow string as the json body with key 'commands'
+  const getResultsFromAPI = async (orderedWorkflowString) => {
+    const url = "http://127.0.0.1:8080/commands";
+    const requestOptions = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands: orderedWorkflowString }),
+    };
+    try {
+      const response = await fetch(url, requestOptions);
+      const data = await response.json();
+      console.log("API response: ", data);
+      // The function will return something like this:
+      /*
+        {
+          "commandStr (from node summary)": {
+            lhs: "result of lhs",
+            rhs: "result of rhs",
+            result: "result of lhs operator rhs",
+          },
+          "commandStr2 (from node summary)": {
+            lhs: "result of lhs",
+            rhs: "result of rhs",
+            result: "result of lhs operator rhs",
+          },
+        }
+      */
+    //  edit the existing nodes to include the results from the API in the field data.evaluatedResults
+    // node.summary will be equal to the key in the response object
+    // node.data.evaluatedResults will be equal to the value in the response object
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => {
+        const evaluatedResults = data[node.data.summary];
+        // Figure out which operator this summary uses it can be >, <, ==
+        // it will add the operator to the evaluatedResults object
+        const op_options = [">", "<", "=="];
+        for (const option of op_options) {
+          if (node.data.summary.includes(option)) {
+            evaluatedResults["op"] = option;
+          }
+        }
+        if (evaluatedResults) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              evaluatedResults: evaluatedResults,
+            },
+          };
+        }
+        return node;
+      });
+    });
+    } catch (error) {
+      console.error("Error fetching data: ", error);
+    }
+  };
+
+
+  const getAllStrategiesByUser = async (uid) => {
+    const strategiesRef = collection(db, "strategies");
+// Create a query against the collection to match the uid
+    const gcloudQ = await getDocs(query(collection(db, "strategies"), where("uid", "==", uid)));
+    const strategies = [];
+    gcloudQ.forEach((doc) => {
+      strategies.push({ id: doc.id, ...doc.data() });
+    });
+    // populate the sidebar menu with the strategies buttons.
+    console.log("Found strategies: ", strategies);
+    setallstrategies(strategies);
+    return strategies;
+  }
 
   // strategyId state
   const loadStrategyFromFirestore = async (uid, strategyId) => {
@@ -806,9 +909,11 @@ function extractWorkflow(nodes, edges) {
         // Assuming here retrieved data has `nodes` and `edges` format suitable for ReactFlow
         setNodes(strategyData.strategy.nodes);
         setEdges(strategyData.strategy.edges);
+        // Call the getResultsFromAPI function with the orderedWorkflow string
         // set strategyId to the strategyId state
         setStrategyId(strategySnap.id);
         console.log("Strategy loaded successfully!");
+        getResultsFromAPI(strategyData.orderedWorkflow);
       } else {
         // Handle the case where there is no such strategy with given ID
         console.log("No such strategy!");
@@ -852,24 +957,18 @@ function extractWorkflow(nodes, edges) {
         <hr />
 
         <div className="strategies">
-          <button
-            style={{ width: "100%", padding: "5px 10px", margin: "5px 0" }}
-          >
-            Strategy 1
-          </button>
-          <button
-            style={{ width: "100%", padding: "5px 10px", margin: "5px 0" }}
-          >
-            Strategy 2
-          </button>
-          <button
-            style={{ width: "100%", padding: "5px 10px", margin: "5px 0" }}
-          >
-            Strategy 3
-          </button>
+          {allStrategies.map((strategy) => (
+            <button
+              key={strategy.id}
+              onClick={() => setStrategyId(strategy.id)}
+              style={{ width: "100%", padding: "5px 10px", margin: "5px 0" }}
+            >
+              Strat: {strategy.id}
+            </button>
+          ))}
         </div>
-
         <button
+          onClick={() => window.location.reload()}
           style={{
             width: "100%",
             padding: "5px 10px",
