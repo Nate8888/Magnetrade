@@ -54,3 +54,10 @@
     font-size: 12px;
     margin-top: 5px;
   }
+
+  /* action-node-evaluatedResults nice green*/
+  .action-node-evaluatedResults {
+    color: #00ff00;
+    font-size: 12px;
+    margin-top: 5px;
+  }
